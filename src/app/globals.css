@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   Sistema de Asignación Académica — CECAR
+   Paleta construida alrededor del verde institucional (#00733B),
+   con una rampa completa para estados, bordes y superficies.
+   ------------------------------------------------------------------ */
+
+@theme {
+  --color-cecar-50: #eaf6ef;
+  --color-cecar-100: #cdebd9;
+  --color-cecar-200: #9ed7b6;
+  --color-cecar-300: #66bd8f;
+  --color-cecar-400: #33a06b;
+  --color-cecar-500: #0f8a51;
+  --color-cecar-600: #00733b;
+  --color-cecar-700: #005e31;
+  --color-cecar-800: #004a27;
+  --color-cecar-900: #00351c;
+  --color-cecar-950: #002112;
+
+  --color-superficie: #f5f7f6;
+  --color-panel: #ffffff;
+  --color-borde: #dfe5e2;
+  --color-texto: #16201b;
+  --color-texto-suave: #5c6b63;
+
+  --font-sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+
+  --shadow-panel: 0 1px 2px rgb(0 53 28 / 0.06), 0 4px 16px rgb(0 53 28 / 0.05);
+  --shadow-elevado: 0 8px 28px rgb(0 53 28 / 0.12);
+}
+
+html,
+body {
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Quita las flechitas de los input[type=number]: las horas se digitan */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Foco visible y consistente en todo el formulario */
+.campo {
+  @apply w-full rounded-lg border border-[var(--color-borde)] bg-white px-3 py-2 text-sm
+         text-[var(--color-texto)] transition
+         placeholder:text-[var(--color-texto-suave)]/60
+         focus:border-cecar-500 focus:ring-2 focus:ring-cecar-500/25 focus:outline-none
+         disabled:cursor-not-allowed disabled:bg-[var(--color-superficie)] disabled:text-[var(--color-texto-suave)];
+}
+
+.campo-error {
+  @apply border-rose-400 focus:border-rose-500 focus:ring-rose-500/25;
+}
+
+.etiqueta {
+  @apply mb-1.5 block text-[11px] font-semibold tracking-wide text-[var(--color-texto-suave)] uppercase;
+}
+
+.tarjeta {
+  @apply rounded-xl border border-[var(--color-borde)] bg-[var(--color-panel)] shadow-[var(--shadow-panel)];
+}
+
+@media print {
+  .no-imprimir {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}
