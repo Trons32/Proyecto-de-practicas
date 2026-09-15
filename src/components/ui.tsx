@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, SelectHTMLAttributes, InputHTMLAttributes } from "react";
+import { ReactNode, SelectHTMLAttributes, InputHTMLAttributes, ButtonHTMLAttributes } from "react";
 
 export function Campo({
   etiqueta,
@@ -56,7 +56,10 @@ export function Seleccion({
     typeof o === "string" ? { valor: o, texto: o.replace(/_/g, " ") } : o
   );
   return (
-    <select {...props} className={`campo ${error ? "campo-error" : ""} ${className}`}>
+    <select
+      {...props}
+      className={`campo truncate pr-9 ${error ? "campo-error" : ""} ${className}`}
+    >
       <option value="">{placeholder}</option>
       {items.map((o) => (
         <option key={o.valor} value={o.valor}>
@@ -79,17 +82,23 @@ export function Seccion({
   children: ReactNode;
 }) {
   return (
-    <section className="tarjeta overflow-hidden">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-borde)] bg-cecar-50/60 px-5 py-3.5">
-        <div>
-          <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">{titulo}</h3>
+    <section className="tarjeta flex flex-col overflow-hidden">
+      {/* Sin flex-wrap: con títulos largos el botón saltaba de línea y las
+          tarjetas contiguas quedaban con encabezados de distinta altura. */}
+      <header className="flex items-start justify-between gap-4 border-b border-[var(--color-borde)] bg-cecar-50/60 px-5 py-4">
+        <div className="min-w-0">
+          <h3 className="text-sm leading-tight font-bold tracking-wide text-cecar-800 uppercase">
+            {titulo}
+          </h3>
           {descripcion && (
-            <p className="mt-0.5 text-xs text-[var(--color-texto-suave)]">{descripcion}</p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--color-texto-suave)]">
+              {descripcion}
+            </p>
           )}
         </div>
-        {accion}
+        {accion && <div className="shrink-0">{accion}</div>}
       </header>
-      <div className="p-5">{children}</div>
+      <div className="flex-1 p-5">{children}</div>
     </section>
   );
 }
@@ -99,24 +108,46 @@ export function Boton({
   className = "",
   children,
   ...props
-}: InputHTMLAttributes<HTMLButtonElement> & {
-  variante?: "primario" | "secundario" | "fantasma" | "peligro";
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variante?:
+    | "primario"
+    | "secundario"
+    | "fantasma"
+    | "peligro"
+    | "peligroSolido"
+    | "sobreVerde"
+    | "sobreVerdeSuave";
   children: ReactNode;
 }) {
   const estilos = {
     primario:
-      "bg-cecar-600 text-white hover:bg-cecar-700 active:bg-cecar-800 shadow-sm disabled:bg-cecar-300",
+      "bg-cecar-600 text-white hover:bg-cecar-700 active:bg-cecar-800 shadow-sm " +
+      "disabled:bg-cecar-200 disabled:text-cecar-500",
     secundario:
-      "bg-white text-cecar-700 border border-cecar-200 hover:bg-cecar-50 hover:border-cecar-300",
+      "bg-white text-cecar-700 border border-cecar-200 hover:bg-cecar-50 hover:border-cecar-300 " +
+      "disabled:bg-white disabled:text-[var(--color-texto-suave)] disabled:border-[var(--color-borde)]",
     fantasma: "text-[var(--color-texto-suave)] hover:bg-black/5 hover:text-[var(--color-texto)]",
     peligro: "text-rose-600 hover:bg-rose-50",
+    peligroSolido:
+      "bg-rose-600 text-white shadow-sm hover:bg-rose-700 active:bg-rose-800 " +
+      "disabled:bg-rose-200 disabled:text-white",
+    // Botón sólido sobre la barra verde: al deshabilitarse conserva
+    // contraste propio en lugar de quedar blanco sobre blanco.
+    sobreVerde:
+      "bg-white text-cecar-700 shadow-sm hover:bg-cecar-50 active:bg-cecar-100 " +
+      "disabled:bg-white/25 disabled:text-white/80 disabled:shadow-none",
+    // Botón secundario sobre la barra verde.
+    sobreVerdeSuave:
+      "bg-white/15 text-white ring-1 ring-inset ring-white/25 hover:bg-white/25 " +
+      "disabled:bg-white/10 disabled:text-white/50",
   }[variante];
 
   return (
     <button
-      {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+      type="button"
+      {...props}
       className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold
-                  transition disabled:cursor-not-allowed disabled:opacity-60 ${estilos} ${className}`}
+                  transition disabled:cursor-not-allowed ${estilos} ${className}`}
     >
       {children}
     </button>

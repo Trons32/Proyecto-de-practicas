@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useForm } from "react-hook-form";
 import {
   ROLES,
   CONTRATOS,
@@ -26,13 +27,20 @@ import {
   aplicarReglaDedicacion,
 } from "@/lib/tipos";
 import { Hallazgo, Totales } from "@/lib/calculo";
+import { REGLAS, type CamposDocente } from "@/lib/esquema-docente";
 import { Campo, Entrada, Seleccion, Seccion, Boton, Insignia } from "./ui";
+import { sileo } from "@/lib/toast";
+import { FiPlus, FiTrash2, FiAlertCircle, FiAlertTriangle } from "./iconos";
 import ResumenHoras from "./ResumenHoras";
 
-const OPCIONES_ROL = ROLES.map((r) => ({
-  valor: String(r.id),
-  texto: `${r.nombre}  ·  ${r.tipo === "INVESTIGACION" ? "Investigación" : r.tipo === "EXTENSION" ? "Extensión" : "Docencia"}`,
-}));
+const ETIQUETA_TIPO = {
+  DOCENCIA: "Docencia",
+  INVESTIGACION: "Investigación",
+  EXTENSION: "Extensión",
+} as const;
+
+/** El tipo no va en el texto de la opción: lo muestra la insignia de al lado. */
+const OPCIONES_ROL = ROLES.map((r) => ({ valor: String(r.id), texto: r.nombre }));
 
 export default function FormularioDocente({
   docente,
@@ -50,11 +58,57 @@ export default function FormularioDocente({
   const set = <K extends keyof Docente>(campo: K, valor: Docente[K]) =>
     onCambio({ ...docente, [campo]: valor });
 
+  /**
+   * react-hook-form valida los datos identificatorios del docente y da el
+   * feedback al salir de cada campo. El estado de verdad sigue siendo el
+   * store: cada cambio se propaga con `set` para que los totales se
+   * recalculen en vivo.
+   */
+  const {
+    register,
+    formState: { errors: erroresRHF },
+  } = useForm<CamposDocente>({
+    mode: "onBlur",
+    values: {
+      documento: docente.documento,
+      nombres: docente.nombres,
+      nivelFormacion: docente.nivelFormacion,
+      tipoContrato: docente.tipoContrato,
+      dedicacion: docente.dedicacion,
+      categoria: docente.categoria,
+      sede: docente.sede,
+      evaluacionDocente: docente.evaluacionDocente,
+    },
+  });
+
+  /** Une el registro de RHF con la escritura al store. */
+  const campo = <K extends keyof CamposDocente>(
+    nombre: K,
+    alCambiar: (valor: string) => void
+  ) => {
+    const { onChange, onBlur, ref } = register(nombre, REGLAS[nombre]);
+    return {
+      ref,
+      onBlur,
+      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        alCambiar(e.target.value);
+        void onChange(e);
+      },
+    };
+  };
+
   const errores = useMemo(() => {
     const m = new Set<string>();
     hallazgos.filter((h) => h.severidad === "error").forEach((h) => m.add(h.campo));
     return m;
   }, [hallazgos]);
+
+  /** Mensaje a mostrar: primero el de RHF, si no el del motor de cálculo. */
+  const mensajeDe = (nombre: keyof CamposDocente, ayuda?: string) =>
+    (erroresRHF[nombre]?.message as string | undefined) ?? ayuda;
+
+  const invalido = (nombre: keyof CamposDocente) =>
+    Boolean(erroresRHF[nombre]) || errores.has(nombre);
 
   const dedicaciones = docente.tipoContrato ? Object.keys(CONTRATOS[docente.tipoContrato] ?? {}) : [];
   const categorias =
@@ -64,6 +118,22 @@ export default function FormularioDocente({
 
   const regla = REGLAS_DEDICACION[docente.dedicacion];
   const apoyoBloqueado = Boolean(regla);
+
+  /* Avisa una sola vez al cruzar el tope de horas, no en cada pulsación. */
+  const excede = totales.maxHoras !== null && totales.totalSemanal > totales.maxHoras;
+  const excedeAnterior = useRef(false);
+
+  useEffect(() => {
+    if (excede && !excedeAnterior.current) {
+      sileo.warning({
+        title: "Se superó el máximo de horas",
+        description:
+          `${totales.totalSemanal} h asignadas sobre un máximo de ${totales.maxHoras} h ` +
+          `para ${docente.dedicacion.replace(/_/g, " ").toLowerCase()}.`,
+      });
+    }
+    excedeAnterior.current = excede;
+  }, [excede, totales.totalSemanal, totales.maxHoras, docente.dedicacion]);
 
   /* ---------- listas anidadas ---------- */
   const setDescarga = (id: string, cambios: Partial<Descarga>) =>
@@ -93,36 +163,47 @@ export default function FormularioDocente({
           descripcion="Datos personales, profesionales y de vinculación"
         >
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Campo etiqueta="Número de documento" requerido error={errores.has("documento")}>
+            <Campo
+              etiqueta="Número de documento"
+              requerido
+              error={invalido("documento")}
+              ayuda={mensajeDe("documento")}
+            >
               <Entrada
                 inputMode="numeric"
                 value={docente.documento}
-                error={errores.has("documento")}
-                onChange={(e) => set("documento", e.target.value.replace(/\D/g, ""))}
+                error={invalido("documento")}
                 placeholder="1003262180"
+                {...campo("documento", (v) => set("documento", v.replace(/\D/g, "")))}
               />
             </Campo>
 
             <Campo
               etiqueta="Nombres y apellidos"
               requerido
-              error={errores.has("nombres")}
+              error={invalido("nombres")}
+              ayuda={mensajeDe("nombres")}
               className="sm:col-span-1 lg:col-span-2"
             >
               <Entrada
                 value={docente.nombres}
-                error={errores.has("nombres")}
-                onChange={(e) => set("nombres", e.target.value.toUpperCase())}
+                error={invalido("nombres")}
                 placeholder="NOMBRE COMPLETO DEL DOCENTE"
+                {...campo("nombres", (v) => set("nombres", v.toUpperCase()))}
               />
             </Campo>
 
-            <Campo etiqueta="Nivel de formación" requerido error={errores.has("nivelFormacion")}>
+            <Campo
+              etiqueta="Nivel de formación"
+              requerido
+              error={invalido("nivelFormacion")}
+              ayuda={mensajeDe("nivelFormacion")}
+            >
               <Seleccion
                 opciones={NIVELES_FORMACION}
                 value={docente.nivelFormacion}
-                error={errores.has("nivelFormacion")}
-                onChange={(e) => set("nivelFormacion", e.target.value)}
+                error={invalido("nivelFormacion")}
+                {...campo("nivelFormacion", (v) => set("nivelFormacion", v))}
               />
             </Campo>
 
@@ -134,16 +215,20 @@ export default function FormularioDocente({
               />
             </Campo>
 
-            <Campo etiqueta="Evaluación docente" error={errores.has("evaluacionDocente")} ayuda="De 0 a 5">
+            <Campo
+              etiqueta="Evaluación docente"
+              error={invalido("evaluacionDocente")}
+              ayuda={mensajeDe("evaluacionDocente", "De 0 a 5")}
+            >
               <Entrada
                 type="number"
                 step="0.01"
                 min={0}
                 max={5}
                 value={docente.evaluacionDocente ?? ""}
-                error={errores.has("evaluacionDocente")}
-                onChange={(e) => set("evaluacionDocente", num(e.target.value))}
+                error={invalido("evaluacionDocente")}
                 placeholder="4.43"
+                {...campo("evaluacionDocente", (v) => set("evaluacionDocente", num(v)))}
               />
             </Campo>
 
@@ -181,11 +266,16 @@ export default function FormularioDocente({
           <hr className="my-5 border-[var(--color-borde)]" />
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Campo etiqueta="Tipo de contrato" requerido error={errores.has("tipoContrato")}>
+            <Campo
+              etiqueta="Tipo de contrato"
+              requerido
+              error={invalido("tipoContrato")}
+              ayuda={mensajeDe("tipoContrato")}
+            >
               <Seleccion
                 opciones={Object.keys(CONTRATOS)}
                 value={docente.tipoContrato}
-                error={errores.has("tipoContrato")}
+                error={invalido("tipoContrato")}
                 onChange={(e) =>
                   onCambio({
                     ...docente,
@@ -200,13 +290,16 @@ export default function FormularioDocente({
             <Campo
               etiqueta="Dedicación"
               requerido
-              error={errores.has("dedicacion")}
-              ayuda={regla ? `Máximo ${regla.maxHoras} h semanales` : undefined}
+              error={invalido("dedicacion")}
+              ayuda={mensajeDe(
+                "dedicacion",
+                regla ? `Máximo ${regla.maxHoras} h semanales` : undefined
+              )}
             >
               <Seleccion
                 opciones={dedicaciones}
                 value={docente.dedicacion}
-                error={errores.has("dedicacion")}
+                error={invalido("dedicacion")}
                 disabled={!docente.tipoContrato}
                 placeholder={docente.tipoContrato ? "Seleccione…" : "Elija el contrato"}
                 onChange={(e) =>
@@ -215,23 +308,28 @@ export default function FormularioDocente({
               />
             </Campo>
 
-            <Campo etiqueta="Categoría" requerido error={errores.has("categoria")}>
+            <Campo
+              etiqueta="Categoría"
+              requerido
+              error={invalido("categoria")}
+              ayuda={mensajeDe("categoria")}
+            >
               <Seleccion
                 opciones={categorias}
                 value={docente.categoria}
-                error={errores.has("categoria")}
+                error={invalido("categoria")}
                 disabled={!docente.dedicacion}
                 placeholder={docente.dedicacion ? "Seleccione…" : "Elija la dedicación"}
                 onChange={(e) => set("categoria", e.target.value)}
               />
             </Campo>
 
-            <Campo etiqueta="Sede" requerido error={errores.has("sede")}>
+            <Campo etiqueta="Sede" requerido error={invalido("sede")} ayuda={mensajeDe("sede")}>
               <Seleccion
                 opciones={SEDES}
                 value={docente.sede}
-                error={errores.has("sede")}
-                onChange={(e) => set("sede", e.target.value)}
+                error={invalido("sede")}
+                {...campo("sede", (v) => set("sede", v))}
               />
             </Campo>
           </div>
@@ -244,23 +342,29 @@ export default function FormularioDocente({
           accion={
             <Boton
               variante="secundario"
-              disabled={docente.cursos.length >= MAX_CURSOS}
-              onClick={() =>
+              onClick={() => {
+                if (docente.cursos.length >= MAX_CURSOS) {
+                  sileo.warning({
+                    title: "Límite de cursos alcanzado",
+                    description: `El formato permite hasta ${MAX_CURSOS} cursos por docente.`,
+                  });
+                  return;
+                }
                 set("cursos", [
                   ...docente.cursos,
                   { ...nuevoCurso(), nombrePrograma: programaPorDefecto },
-                ])
-              }
+                ]);
+              }}
             >
-              + Agregar curso
+              <FiPlus aria-hidden /> Agregar curso
             </Boton>
           }
         >
-          <div className="space-y-3">
+          <div className="space-y-4">
             {docente.cursos.map((c, i) => (
               <div
                 key={c.id}
-                className="rounded-lg border border-[var(--color-borde)] bg-[var(--color-superficie)]/50 p-4"
+                className="rounded-xl border border-[var(--color-borde)] bg-[var(--color-superficie)]/50 p-4 sm:p-5"
               >
                 <div className="mb-3 flex items-center justify-between">
                   <Insignia tono="verde">Curso {i + 1}</Insignia>
@@ -275,12 +379,12 @@ export default function FormularioDocente({
                         )
                       }
                     >
-                      Quitar
+                      <FiTrash2 aria-hidden /> Quitar
                     </Boton>
                   )}
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <Campo etiqueta="Código curso">
                     <Entrada
                       value={c.codigoCurso}
@@ -379,17 +483,27 @@ export default function FormularioDocente({
         </Seccion>
 
         {/* ---------------- Descargas y administrativas ---------------- */}
-        <div className="grid gap-6 xl:grid-cols-2">
+        {/* Una sola columna: los nombres de rol llegan a 96 caracteres y en
+            dos columnas el <select> los recortaba. */}
+        <div className="grid gap-6">
           <Seccion
             titulo="Descargas directas"
             descripcion={`${docente.descargas.length} de ${MAX_DESCARGAS}`}
             accion={
               <Boton
                 variante="secundario"
-                disabled={docente.descargas.length >= MAX_DESCARGAS}
-                onClick={() => set("descargas", [...docente.descargas, nuevaDescarga()])}
+                onClick={() => {
+                  if (docente.descargas.length >= MAX_DESCARGAS) {
+                    sileo.warning({
+                      title: "Límite de descargas alcanzado",
+                      description: `El formato permite hasta ${MAX_DESCARGAS} descargas directas (R1, R2, R3).`,
+                    });
+                    return;
+                  }
+                  set("descargas", [...docente.descargas, nuevaDescarga()]);
+                }}
               >
-                + Agregar
+                <FiPlus aria-hidden /> Agregar
               </Boton>
             }
           >
@@ -398,10 +512,10 @@ export default function FormularioDocente({
               prefijo="R"
               vacio="Sin descargas directas."
               onCambio={setDescarga}
-              onQuitar={(id) =>
+              onQuitar={(x) =>
                 set(
                   "descargas",
-                  docente.descargas.filter((x) => x.id !== id)
+                  docente.descargas.filter((d) => d.id !== x.id)
                 )
               }
             />
@@ -413,12 +527,18 @@ export default function FormularioDocente({
             accion={
               <Boton
                 variante="secundario"
-                disabled={docente.administrativas.length >= MAX_ADMINISTRATIVAS}
-                onClick={() =>
-                  set("administrativas", [...docente.administrativas, nuevaAdministrativa()])
-                }
+                onClick={() => {
+                  if (docente.administrativas.length >= MAX_ADMINISTRATIVAS) {
+                    sileo.warning({
+                      title: "Límite de actividades alcanzado",
+                      description: `El formato permite hasta ${MAX_ADMINISTRATIVAS} actividades administrativas (R1, R2, R3).`,
+                    });
+                    return;
+                  }
+                  set("administrativas", [...docente.administrativas, nuevaAdministrativa()]);
+                }}
               >
-                + Agregar
+                <FiPlus aria-hidden /> Agregar
               </Boton>
             }
           >
@@ -427,10 +547,10 @@ export default function FormularioDocente({
               prefijo="R"
               vacio="Sin actividades administrativas."
               onCambio={setAdmin}
-              onQuitar={(id) =>
+              onQuitar={(x) =>
                 set(
                   "administrativas",
-                  docente.administrativas.filter((x) => x.id !== id)
+                  docente.administrativas.filter((a) => a.id !== x.id)
                 )
               }
             />
@@ -493,11 +613,11 @@ export default function FormularioDocente({
             <ul className="space-y-2">
               {hallazgos.map((h, i) => (
                 <li key={i} className="flex items-start gap-2.5 text-sm">
-                  <span
-                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                      h.severidad === "error" ? "bg-rose-500" : "bg-amber-500"
-                    }`}
-                  />
+                  {h.severidad === "error" ? (
+                    <FiAlertCircle className="mt-0.5 shrink-0 text-rose-500" aria-hidden />
+                  ) : (
+                    <FiAlertTriangle className="mt-0.5 shrink-0 text-amber-500" aria-hidden />
+                  )}
                   <span
                     className={
                       h.severidad === "error" ? "text-rose-700" : "text-[var(--color-texto-suave)]"
@@ -532,7 +652,7 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
   prefijo: string;
   vacio: string;
   onCambio: (id: string, cambios: Partial<T>) => void;
-  onQuitar: (id: string) => void;
+  onQuitar: (item: T) => void;
 }) {
   if (items.length === 0) {
     return (
@@ -543,7 +663,7 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {items.map((x, i) => {
         const rol = ROLES.find((r) => r.id === x.rolId);
         const tono =
@@ -551,34 +671,33 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
         return (
           <div
             key={x.id}
-            className="rounded-lg border border-[var(--color-borde)] bg-[var(--color-superficie)]/50 p-3"
+            className="rounded-xl border border-[var(--color-borde)] bg-[var(--color-superficie)]/50 p-4"
           >
-            <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Insignia>
                   {prefijo}
                   {i + 1}
                 </Insignia>
-                {rol && (
-                  <Insignia tono={tono}>
-                    {rol.tipo === "INVESTIGACION"
-                      ? "Investigación"
-                      : rol.tipo === "EXTENSION"
-                        ? "Extensión"
-                        : "Docencia"}
-                  </Insignia>
-                )}
+                {rol && <Insignia tono={tono}>{ETIQUETA_TIPO[rol.tipo]}</Insignia>}
               </div>
-              <Boton variante="peligro" className="px-2 py-1 text-xs" onClick={() => onQuitar(x.id)}>
-                Quitar
+              <Boton
+                variante="peligro"
+                className="shrink-0 px-2 py-1 text-xs"
+                onClick={() => onQuitar(x)}
+              >
+                <FiTrash2 aria-hidden /> Quitar
               </Boton>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
+            {/* El rol ocupa su propia fila: sus nombres llegan a 96 caracteres. */}
+            <div className="space-y-3">
               <Campo etiqueta="Rol">
                 <Seleccion
+                  className="w-full"
                   opciones={OPCIONES_ROL}
                   value={x.rolId === null ? "" : String(x.rolId)}
+                  title={rol?.nombre}
                   onChange={(e) =>
                     onCambio(x.id, {
                       rolId: e.target.value === "" ? null : Number(e.target.value),
@@ -586,7 +705,8 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
                   }
                 />
               </Campo>
-              <Campo etiqueta="Horas">
+
+              <Campo etiqueta="Horas semanales" className="max-w-[10rem]">
                 <Entrada
                   type="number"
                   min={0}

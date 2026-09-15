@@ -39,6 +39,26 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Preflight de Tailwind pone cursor:default en los botones. Se restituye la
+   mano en todo lo que se puede pulsar, para no repetir la clase en cada uso. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+label[for],
+summary,
+select:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+input[type="file"]:not(:disabled),
+input[type="range"]:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* Quita las flechitas de los input[type=number]: las horas se digitan */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {

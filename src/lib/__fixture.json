@@ -1,0 +1,1389 @@
+{
+ "rolIds": {
+  "DECANO": 1,
+  "COORDINADORES ACADÉMICOS": 2,
+  "DOCENTE DE APOYO A MAESTRÍAS": 3,
+  "COORDINADOR ACADÉMICO POSGRADO": 4,
+  "COORDINADOR ACADÉMICO EDUCACIÓN CONTINUA": 5,
+  "COORDINADOR DE EVALUACIÓN PARA EL APRENDIZAJE": 6,
+  "COORDINADOR DE GESTIÓN ACADÉMICA": 7,
+  "COORDINADOR DE DESARROLLO PROFESORAL": 8,
+  "JEFE DE DEPARTAMENTO HUMANIDADES": 9,
+  "JEFE DEPARTAMENTO CIENCIAS BÁSICAS": 10,
+  "DOCENTE COORDINADOR DE INGLÉS INSTITUCIONAL": 11,
+  "DOCENTE CON FUNCIONES ADMINISTRATIVAS": 12,
+  "DOCENTE CON FUNCIONES DIRECTIVAS": 13,
+  "DOCENTE DE APOYO A REGISTRO CALIFICADO": 14,
+  "COORDINADOR DE INVESTIGACIÓN DE LA FACULTAD": 15,
+  "DOCENTE CON CLASES DIRECTAS": 16,
+  "DOCENTE LIDER DE ÁREA": 17,
+  "DOCENTE DE APOYO A COORDINACIÓN ACADÉMICA": 18,
+  "DOCENTE DE APOYO A EVENTOS ACADÉMICOS": 19,
+  "DOCENTE CON ACTIVIDADES DE AUTOEVALUACIÓN": 20,
+  "DOCENTE DE APOYO A CENTRO DE EXCELENCIA": 21,
+  "DOCENTE ASESOR DE CONSULTORIO JURÍDICO": 22,
+  "DOCENTE COORDINACIÓN DE CONSULTORÍO JURÍDICO Y CENTRO DE CONCILIACIÓN": 23,
+  "DOCENTE COORDINADOR DE ESPECIALIZACIONES": 24,
+  "DOCENTE DE APOYO A MAESTRIAS": 25,
+  "DOCENTE INVESTIGADOR PRINCIPAL DE PROYECTO DE FINANCIACIÓN INTERNA": 26,
+  "DOCENTE COINVESTIGADOR DE PROYECTO DE FINANCIACIÓN INTERNA": 27,
+  "INVESTIGADOR PRINCIPAL PROYECTO CON FINANCIACIÓN EXTERNA": 28,
+  "CO - INVESTIGADOR PROYECTO CON FINANCIACIÓN EXTERNA*": 29,
+  "TUTOR DE JOVEN INVESTIGADOR": 30,
+  "TUTOR DE JOVEN PROGRAMA DELFÍN": 31,
+  "DOCENTE EDITOR DE REVISTA CIENTÍFICA": 32,
+  "COEDITOR DE REVISTA": 33,
+  "DOCENTE APOYO ADTVO DIRECCIÓN DE INVESTIGACIÓN": 34,
+  "DIRECTOR DE SEMILLERO DE INVESTIGACIÓN": 35,
+  "DIRECTOR GRUPO DE INVESTIGACIÓN": 36,
+  "LIDER DE LINEA DE INVESTIGACIÓN": 37,
+  "DOCENTE CON ACTIVIDADES EN INVESTIGACIÓN": 38,
+  "DOCENTE COORDINADOR CENTRO DE INNOVACIÓN Y EMPRENDIMIENTO CIEM DOCENTE DE APOYO A EMPRENDIMIENTO": 39,
+  "DOCENTE COORDINADOR DE PRÁCTICAS DE PROGRAMA": 40,
+  "DOCENTE COORDINADOR DE CENTROS Y CONSULTORIOS": 41,
+  "DOCENTE ASESOR DE CENTROS Y CONSULTORIOS": 42,
+  "DOCENTE COORDINADOR DE PUNTO BVC": 43,
+  "DOCENTE CON ACTIVIDADES DE EXTENSIÓN Y PROYECCIÓN SOCIAL": 44,
+  "DOCENTE DE APOYO A CENTRO DE CONSULTORÍA": 45,
+  "DOCENTE ASESOR DE CENTRO DE ATENCIÓN PSICOLÓGICA CAPS": 46,
+  "DOCENTE COORDINADOR DE CENTRO DE ATENCIÓN PSICOLÓGICA – CAPS": 47,
+  "DOCENTE COORDINADOR DE PRÁCTICA DOCENCIA - SERVICIO": 48,
+  "COORDINADOR DE LABORATORIO": 49,
+  "COORDINADOR PUNTO BVC": 50,
+  "DOCENTE SECRETARIO DEL CONSEJO DE FACULTAD": 51,
+  "DOCENTE APOYO A FACULTADES": 52,
+  "DOCENTE APOYO A EVENTOS": 53,
+  "DOCENTE APOYO CONVENIO CPNAA": 54,
+  "DOCENTE DE APOYO A NAFF": 55,
+  "DOCENTE DE APOYO A LA SECRETARÍA DE FACULTADES": 56
+ },
+ "casos": [
+  {
+   "n": 1,
+   "fila": 9,
+   "dedicacion": "HORA_CÁTEDRA",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4623"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 25,
+     "codigoCurso": "4627"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4634"
+    }
+   ],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 12,
+    "horasClase": 12,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 95
+   }
+  },
+  {
+   "n": 2,
+   "fila": 19,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 5,
+   "atencion": 5,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4623"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 25,
+     "codigoCurso": "4627"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 40,
+     "codigoCurso": "4631"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4635"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "63"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "63"
+    }
+   ],
+   "descargas": [],
+   "administrativas": [
+    {
+     "rol": "DOCENTE CON ACTIVIDADES DE EXTENSIÓN Y PROYECCIÓN SOCIAL",
+     "horas": 6
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 21,
+    "descargas": 0,
+    "apoyo": 13,
+    "estudiantes": 205
+   }
+  },
+  {
+   "n": 3,
+   "fila": 29,
+   "dedicacion": "HORA_CÁTEDRA",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "506"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 40,
+     "codigoCurso": "1412"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 40,
+     "codigoCurso": "4630"
+    }
+   ],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 12,
+    "horasClase": 12,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 115
+   }
+  },
+  {
+   "n": 4,
+   "fila": 39,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 5,
+   "atencion": 5,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "4609"
+    },
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "4609"
+    },
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 30,
+     "codigoCurso": "4614"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 40,
+     "codigoCurso": "3875"
+    }
+   ],
+   "descargas": [
+    {
+     "rol": "DOCENTE COINVESTIGADOR DE PROYECTO DE FINANCIACIÓN INTERNA",
+     "horas": 2
+    }
+   ],
+   "administrativas": [
+    {
+     "rol": "DOCENTE DE APOYO A EVENTOS ACADÉMICOS",
+     "horas": 2
+    },
+    {
+     "rol": "DOCENTE LIDER DE ÁREA",
+     "horas": 2
+    },
+    {
+     "rol": "DOCENTE DE APOYO A CENTRO DE CONSULTORÍA",
+     "horas": 3
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 18,
+    "descargas": 2,
+    "apoyo": 13,
+    "estudiantes": 140
+   }
+  },
+  {
+   "n": 5,
+   "fila": 49,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": null
+   }
+  },
+  {
+   "n": 6,
+   "fila": 59,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 5,
+   "atencion": 5,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "4618"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "4618"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "4622"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "1390"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "1390"
+    }
+   ],
+   "descargas": [
+    {
+     "rol": "DOCENTE INVESTIGADOR PRINCIPAL DE PROYECTO DE FINANCIACIÓN INTERNA",
+     "horas": 4
+    }
+   ],
+   "administrativas": [
+    {
+     "rol": "DOCENTE CON ACTIVIDADES DE EXTENSIÓN Y PROYECCIÓN SOCIAL",
+     "horas": 4
+    },
+    {
+     "rol": "DOCENTE APOYO A EVENTOS",
+     "horas": 4
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 15,
+    "descargas": 4,
+    "apoyo": 13,
+    "estudiantes": 175
+   }
+  },
+  {
+   "n": 7,
+   "fila": 69,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 5,
+   "atencion": 5,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "506"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4621"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4624"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4624"
+    }
+   ],
+   "descargas": [
+    {
+     "rol": "DOCENTE COINVESTIGADOR DE PROYECTO DE FINANCIACIÓN INTERNA",
+     "horas": 4
+    }
+   ],
+   "administrativas": [
+    {
+     "rol": "CO - INVESTIGADOR PROYECTO CON FINANCIACIÓN EXTERNA*",
+     "horas": 2
+    },
+    {
+     "rol": "DOCENTE APOYO A EVENTOS",
+     "horas": 2
+    },
+    {
+     "rol": "DOCENTE CON ACTIVIDADES DE EXTENSIÓN Y PROYECCIÓN SOCIAL",
+     "horas": 3
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 16,
+    "descargas": 4,
+    "apoyo": 13,
+    "estudiantes": 140
+   }
+  },
+  {
+   "n": 8,
+   "fila": 79,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 5,
+   "atencion": 5,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "847"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "4615"
+    },
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "104"
+    },
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "104"
+    }
+   ],
+   "descargas": [
+    {
+     "rol": "DOCENTE COINVESTIGADOR DE PROYECTO DE FINANCIACIÓN INTERNA",
+     "horas": 2
+    }
+   ],
+   "administrativas": [
+    {
+     "rol": "DOCENTE APOYO A EVENTOS",
+     "horas": 2
+    },
+    {
+     "rol": "DOCENTE DE APOYO A EVENTOS ACADÉMICOS",
+     "horas": 5
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 18,
+    "descargas": 2,
+    "apoyo": 13,
+    "estudiantes": 140
+   }
+  },
+  {
+   "n": 9,
+   "fila": 89,
+   "dedicacion": "MEDIO_TIEMPO",
+   "preparacion": 2,
+   "atencion": 2,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4633"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 30,
+     "codigoCurso": "4638"
+    }
+   ],
+   "descargas": [
+    {
+     "rol": "DOCENTE COINVESTIGADOR DE PROYECTO DE FINANCIACIÓN INTERNA",
+     "horas": 2
+    }
+   ],
+   "administrativas": [
+    {
+     "rol": "DOCENTE COINVESTIGADOR DE PROYECTO DE FINANCIACIÓN INTERNA",
+     "horas": 3
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 20,
+    "horasClase": 8,
+    "descargas": 2,
+    "apoyo": 7,
+    "estudiantes": 65
+   }
+  },
+  {
+   "n": 10,
+   "fila": 99,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 5,
+   "atencion": 5,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 40,
+     "codigoCurso": "4625"
+    },
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "4677"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4632"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 30,
+     "codigoCurso": "4636"
+    },
+    {
+     "intensidadHoraria": 2,
+     "estudiantes": 20,
+     "codigoCurso": "1164"
+    }
+   ],
+   "descargas": [
+    {
+     "rol": "DOCENTE COORDINADOR DE PRÁCTICAS DE PROGRAMA",
+     "horas": 1
+    }
+   ],
+   "administrativas": [
+    {
+     "rol": "DOCENTE COORDINADOR DE PRÁCTICAS DE PROGRAMA",
+     "horas": 7
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 19,
+    "descargas": 1,
+    "apoyo": 13,
+    "estudiantes": 160
+   }
+  },
+  {
+   "n": 11,
+   "fila": 109,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 5,
+   "atencion": 5,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 40,
+     "codigoCurso": "5302"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "4626"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "4805"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 30,
+     "codigoCurso": "5304"
+    }
+   ],
+   "descargas": [
+    {
+     "rol": "DOCENTE INVESTIGADOR PRINCIPAL DE PROYECTO DE FINANCIACIÓN INTERNA",
+     "horas": 4
+    },
+    {
+     "rol": "DIRECTOR GRUPO DE INVESTIGACIÓN",
+     "horas": 2
+    }
+   ],
+   "administrativas": [
+    {
+     "rol": "DOCENTE CON ACTIVIDADES EN INVESTIGACIÓN",
+     "horas": 7
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 14,
+    "descargas": 6,
+    "apoyo": 13,
+    "estudiantes": 140
+   }
+  },
+  {
+   "n": 12,
+   "fila": 119,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 13,
+   "fila": 129,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 5,
+   "atencion": 5,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4620"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4620"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 30,
+     "codigoCurso": "4637"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "1417"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "5304"
+    }
+   ],
+   "descargas": [],
+   "administrativas": [
+    {
+     "rol": "DOCENTE DE APOYO A MAESTRÍAS",
+     "horas": 5
+    },
+    {
+     "rol": "DOCENTE APOYO A EVENTOS",
+     "horas": 2
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 20,
+    "descargas": 0,
+    "apoyo": 13,
+    "estudiantes": 170
+   }
+  },
+  {
+   "n": 14,
+   "fila": 139,
+   "dedicacion": "HORA_CÁTEDRA",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 40,
+     "codigoCurso": "1414"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 40,
+     "codigoCurso": "4628"
+    },
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "4614"
+    }
+   ],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 12,
+    "horasClase": 12,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 115
+   }
+  },
+  {
+   "n": 15,
+   "fila": 149,
+   "dedicacion": "HORA_CÁTEDRA",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "104"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 35,
+     "codigoCurso": "4615"
+    },
+    {
+     "intensidadHoraria": 2,
+     "estudiantes": 30,
+     "codigoCurso": "740"
+    },
+    {
+     "intensidadHoraria": 2,
+     "estudiantes": 30,
+     "codigoCurso": "740"
+    }
+   ],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 12,
+    "horasClase": 12,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 130
+   }
+  },
+  {
+   "n": 16,
+   "fila": 159,
+   "dedicacion": "HORA_CÁTEDRA",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4617"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4617"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "4617"
+    }
+   ],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 12,
+    "horasClase": 12,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 105
+   }
+  },
+  {
+   "n": 17,
+   "fila": 169,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 5,
+   "atencion": 5,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "847"
+    },
+    {
+     "intensidadHoraria": 2,
+     "estudiantes": 45,
+     "codigoCurso": "593"
+    },
+    {
+     "intensidadHoraria": 2,
+     "estudiantes": 45,
+     "codigoCurso": "593"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 40,
+     "codigoCurso": "1390"
+    }
+   ],
+   "descargas": [
+    {
+     "rol": "DOCENTE DE APOYO A COORDINACIÓN ACADÉMICA",
+     "horas": 8
+    }
+   ],
+   "administrativas": [
+    {
+     "rol": "DOCENTE APOYO A EVENTOS",
+     "horas": 4
+    },
+    {
+     "rol": "DOCENTE DE APOYO A COORDINACIÓN ACADÉMICA",
+     "horas": 3
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 12,
+    "descargas": 8,
+    "apoyo": 13,
+    "estudiantes": 165
+   }
+  },
+  {
+   "n": 18,
+   "fila": 179,
+   "dedicacion": "HORA_CÁTEDRA",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 40,
+     "codigoCurso": "4629"
+    },
+    {
+     "intensidadHoraria": 4,
+     "estudiantes": 35,
+     "codigoCurso": "1417"
+    },
+    {
+     "intensidadHoraria": 3,
+     "estudiantes": 40,
+     "codigoCurso": "4626"
+    }
+   ],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 11,
+    "horasClase": 11,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 115
+   }
+  },
+  {
+   "n": 19,
+   "fila": 189,
+   "dedicacion": "HORA_CÁTEDRA",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "4619"
+    },
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "4619"
+    }
+   ],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 10,
+    "horasClase": 10,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 70
+   }
+  },
+  {
+   "n": 20,
+   "fila": 199,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 1,
+   "atencion": 1,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 2,
+     "estudiantes": 35,
+     "codigoCurso": "138"
+    }
+   ],
+   "descargas": [
+    {
+     "rol": "COORDINADORES ACADÉMICOS",
+     "horas": 16
+    },
+    {
+     "rol": "DOCENTE COINVESTIGADOR DE PROYECTO DE FINANCIACIÓN INTERNA",
+     "horas": 2
+    }
+   ],
+   "administrativas": [
+    {
+     "rol": "DOCENTE CON ACTIVIDADES DE AUTOEVALUACIÓN",
+     "horas": 3
+    },
+    {
+     "rol": "COORDINADORES ACADÉMICOS",
+     "horas": 12
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 2,
+    "descargas": 18,
+    "apoyo": 5,
+    "estudiantes": 35
+   }
+  },
+  {
+   "n": 21,
+   "fila": 209,
+   "dedicacion": "TIEMPO_COMPLETO",
+   "preparacion": 5,
+   "atencion": 5,
+   "comunidades": 3,
+   "cursos": [
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "4611"
+    },
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 30,
+     "codigoCurso": "4611"
+    },
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 30,
+     "codigoCurso": "4611"
+    },
+    {
+     "intensidadHoraria": 5,
+     "estudiantes": 35,
+     "codigoCurso": "4677"
+    }
+   ],
+   "descargas": [],
+   "administrativas": [
+    {
+     "rol": "DOCENTE APOYO A EVENTOS",
+     "horas": 2
+    },
+    {
+     "rol": "DOCENTE DE APOYO A EVENTOS ACADÉMICOS",
+     "horas": 5
+    }
+   ],
+   "esperado": {
+    "granTotalExcel": 40,
+    "horasClase": 20,
+    "descargas": 0,
+    "apoyo": 13,
+    "estudiantes": 130
+   }
+  },
+  {
+   "n": 22,
+   "fila": 219,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 23,
+   "fila": 229,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 24,
+   "fila": 239,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 25,
+   "fila": 249,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 26,
+   "fila": 259,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 27,
+   "fila": 269,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 28,
+   "fila": 279,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 29,
+   "fila": 289,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 30,
+   "fila": 299,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 31,
+   "fila": 309,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 32,
+   "fila": 319,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 33,
+   "fila": 329,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 34,
+   "fila": 339,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 35,
+   "fila": 349,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 36,
+   "fila": 359,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 37,
+   "fila": 369,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 38,
+   "fila": 379,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 39,
+   "fila": 389,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 40,
+   "fila": 399,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 41,
+   "fila": 409,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 42,
+   "fila": 419,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 43,
+   "fila": 429,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 44,
+   "fila": 439,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  },
+  {
+   "n": 45,
+   "fila": 449,
+   "dedicacion": "",
+   "preparacion": 0,
+   "atencion": 0,
+   "comunidades": 0,
+   "cursos": [],
+   "descargas": [],
+   "administrativas": [],
+   "esperado": {
+    "granTotalExcel": 0,
+    "horasClase": 0,
+    "descargas": 0,
+    "apoyo": 0,
+    "estudiantes": 0
+   }
+  }
+ ]
+}
