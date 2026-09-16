@@ -3,10 +3,29 @@
 import { Totales, formatoPct } from "@/lib/calculo";
 
 const BARRAS = [
-  { clave: "docencia", etiqueta: "Docencia", color: "bg-cecar-600" },
-  { clave: "investigacion", etiqueta: "Investigación", color: "bg-sky-600" },
-  { clave: "extension", etiqueta: "Extensión y P. Social", color: "bg-amber-500" },
+  { clave: "docencia", etiqueta: "Docencia", tipo: "DOCENCIA", color: "bg-cecar-600" },
+  { clave: "investigacion", etiqueta: "Investigación", tipo: "INVESTIGACION", color: "bg-sky-600" },
+  {
+    clave: "extension",
+    etiqueta: "Extensión y P. Social",
+    tipo: "EXTENSION",
+    color: "bg-amber-500",
+  },
 ] as const;
+
+/** Una línea del detalle: de dónde salen las horas de una categoría. */
+function Linea({ texto, horas }: { texto: string; horas: number }) {
+  return (
+    <li className="flex items-baseline justify-between gap-2">
+      <span className="min-w-0 truncate text-[11px] text-[var(--color-texto-suave)]" title={texto}>
+        {texto}
+      </span>
+      <span className="shrink-0 text-[11px] font-semibold tabular-nums text-[var(--color-texto)]">
+        {horas} h
+      </span>
+    </li>
+  );
+}
 
 function Dato({ etiqueta, valor }: { etiqueta: string; valor: number | string }) {
   return (
@@ -44,7 +63,7 @@ export default function ResumenHoras({ t }: { t: Totales }) {
   };
 
   return (
-    <div className="tarjeta sticky top-6 overflow-hidden">
+    <div className="tarjeta tarjeta-sombra overflow-hidden xl:sticky xl:top-6">
       <header className="border-b border-[var(--color-borde)] bg-cecar-50/60 px-5 py-3.5">
         <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">
           Dedicación semanal
@@ -52,7 +71,9 @@ export default function ResumenHoras({ t }: { t: Totales }) {
         <p className="mt-0.5 text-xs text-[var(--color-texto-suave)]">Se recalcula automáticamente</p>
       </header>
 
-      <div className="space-y-5 p-5">
+      {/* Por debajo de xl el resumen va a lo ancho bajo el formulario: sus
+          tres bloques se reparten en línea en vez de quedar altísimos. */}
+      <div className="resumen-cuerpo p-5">
         {/* Total semanal */}
         <div className={`rounded-xl px-4 py-3 ring-1 ring-inset ${tono.fondo} ${tono.anillo}`}>
           <div className="flex items-baseline justify-between">
@@ -77,11 +98,21 @@ export default function ResumenHoras({ t }: { t: Totales }) {
           </div>
         </div>
 
-        {/* Distribución */}
-        <div className="space-y-2.5">
+        {/* Distribución, con el detalle de lo que suma en cada categoría */}
+        <div className="space-y-3.5">
           {BARRAS.map((b) => {
             const v = valores[b.clave];
             const p = pct[b.clave];
+            const actividades = t.actividades.filter((a) => a.tipo === b.tipo);
+            // La docencia suma además las clases y el apoyo académico.
+            const fijas =
+              b.clave === "docencia"
+                ? [
+                    { texto: "Horas de clase", horas: t.horasClase },
+                    { texto: "Apoyo académico", horas: t.apoyoAcademico },
+                  ].filter((x) => x.horas > 0)
+                : [];
+
             return (
               <div key={b.clave}>
                 <div className="mb-1 flex items-center justify-between text-xs">
@@ -97,13 +128,24 @@ export default function ResumenHoras({ t }: { t: Totales }) {
                     style={{ width: `${Math.min(p * 100, 100)}%` }}
                   />
                 </div>
+
+                {(fijas.length > 0 || actividades.length > 0) && (
+                  <ul className="mt-1.5 space-y-0.5 border-l-2 border-black/[0.07] pl-2.5">
+                    {fijas.map((f) => (
+                      <Linea key={f.texto} texto={f.texto} horas={f.horas} />
+                    ))}
+                    {actividades.map((a, i) => (
+                      <Linea key={`${a.rol}-${i}`} texto={a.rol} horas={a.horas} />
+                    ))}
+                  </ul>
+                )}
               </div>
             );
           })}
         </div>
 
         {/* Desglose */}
-        <dl className="grid grid-cols-2 gap-2">
+        <dl className="grid grid-cols-2 gap-2 max-xl:md:grid-cols-3">
           <Dato etiqueta="Horas de clase" valor={t.horasClase} />
           <Dato etiqueta="Apoyo académico" valor={t.apoyoAcademico} />
           <Dato etiqueta="Descargas" valor={t.totalDescargas} />

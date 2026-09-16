@@ -1,10 +1,26 @@
-import { ROLES, REGLAS_DEDICACION, TipoRol } from "./catalogos";
+import { ROLES, REGLAS_DEDICACION, TipoRol, type Rol, type ReglaDedicacion } from "./catalogos";
 import type { Docente } from "./tipos";
 
-const ROL_POR_ID = new Map(ROLES.map((r) => [r.id, r]));
+/**
+ * Roles y reglas con los que se calcula. Por defecto son los del formato
+ * oficial; el administrador puede parametrizarlos y entonces las vistas
+ * pasan los suyos. Se mantiene como argumento —y no como import de un
+ * store— para que el motor siga siendo puro y verificable fuera de React.
+ */
+export interface Configuracion {
+  roles: Rol[];
+  reglas: Record<string, ReglaDedicacion>;
+}
 
-const tipoDeRol = (rolId: number | null): TipoRol | null =>
-  rolId === null ? null : ROL_POR_ID.get(rolId)?.tipo ?? null;
+export const CONFIG_OFICIAL: Configuracion = { roles: ROLES, reglas: REGLAS_DEDICACION };
+
+/** Una descarga o actividad administrativa, ya clasificada. */
+export interface Actividad {
+  rol: string;
+  horas: number;
+  tipo: TipoRol;
+  origen: "descarga" | "administrativa";
+}
 
 export interface Totales {
   /** Σ intensidad horaria de los cursos (Excel: T = SUM(AT:AT)) */
@@ -31,6 +47,8 @@ export interface Totales {
   pctExtension: number;
   /** Tope según la dedicación; null si no hay dedicación elegida */
   maxHoras: number | null;
+  /** Descargas y administrativas con horas, para el detalle del panel */
+  actividades: Actividad[];
 }
 
 /**
@@ -45,7 +63,11 @@ export interface Totales {
  * campo `tipo` del catálogo, lo que además corrige los roles que en el
  * Excel caían fuera de todo rango y perdían sus horas.
  */
-export function calcularTotales(d: Docente): Totales {
+export function calcularTotales(d: Docente, config: Configuracion = CONFIG_OFICIAL): Totales {
+  const rolPorId = new Map(config.roles.map((r) => [r.id, r]));
+  const tipoDeRol = (rolId: number | null): TipoRol | null =>
+    rolId === null ? null : (rolPorId.get(rolId)?.tipo ?? null);
+
   const horasClase = d.cursos.reduce((s, c) => s + (c.intensidadHoraria ?? 0), 0);
   const totalEstudiantes = d.cursos.reduce((s, c) => s + (c.estudiantes ?? 0), 0);
   const cursosDiferentes = new Set(
@@ -55,6 +77,24 @@ export function calcularTotales(d: Docente): Totales {
   const totalDescargas = d.descargas.reduce((s, x) => s + (x.horas || 0), 0);
   const totalAdministrativas = d.administrativas.reduce((s, x) => s + (x.horas || 0), 0);
   const apoyoAcademico = (d.preparacion || 0) + (d.atencion || 0) + (d.comunidades || 0);
+
+  /**
+   * Cada descarga y actividad administrativa, con el rol que la
+   * identifica y la categoría a la que suma. Alimenta el detalle del
+   * panel de dedicación: sin esto, el coordinador ve el total pero no
+   * de dónde sale.
+   */
+  const actividades: Actividad[] = [
+    ...d.descargas.map((x) => ({ x, origen: "descarga" as const })),
+    ...d.administrativas.map((x) => ({ x, origen: "administrativa" as const })),
+  ]
+    .filter(({ x }) => x.rolId !== null && (x.horas || 0) > 0)
+    .map(({ x, origen }) => ({
+      rol: rolPorId.get(x.rolId as number)?.nombre ?? "Rol sin identificar",
+      horas: x.horas || 0,
+      tipo: tipoDeRol(x.rolId) ?? "DOCENCIA",
+      origen,
+    }));
 
   const porTipo = (tipo: TipoRol) =>
     [...d.descargas, ...d.administrativas]
@@ -82,7 +122,8 @@ export function calcularTotales(d: Docente): Totales {
     pctDocencia: pct(docencia),
     pctInvestigacion: pct(investigacion),
     pctExtension: pct(extension),
-    maxHoras: REGLAS_DEDICACION[d.dedicacion]?.maxHoras ?? null,
+    maxHoras: config.reglas[d.dedicacion]?.maxHoras ?? null,
+    actividades,
   };
 }
 

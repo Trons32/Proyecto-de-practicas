@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import DeferredToaster from "@/components/DeferredToaster";
+import Chrome from "@/components/Chrome";
+import GuardiaSesion from "@/components/GuardiaSesion";
 
 export const metadata: Metadata = {
   title: "Asignación Académica · CECAR",
@@ -12,7 +14,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es">
       <body>
-        {children}
+        <GuardiaSesion>
+          <Chrome>{children}</Chrome>
+        </GuardiaSesion>
         <DeferredToaster />
       </body>
     </html>

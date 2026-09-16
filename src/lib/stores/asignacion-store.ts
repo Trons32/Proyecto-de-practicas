@@ -2,83 +2,103 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { Asignacion, Docente, nuevoDocente, aplicarReglaDedicacion } from "@/lib/tipos";
+import {
+  Asignacion,
+  Docente,
+  nuevaAsignacion,
+  nuevoDocente,
+  aplicarReglaDedicacion,
+} from "@/lib/tipos";
 
-interface AsignacionStore extends Asignacion {
-  /** Índice del docente que se está editando. */
-  activo: number;
+interface AsignacionStore {
+  /** Todas las asignaciones, incluido el histórico. */
+  asignaciones: Asignacion[];
   /** El estado persistido ya se rehidrató desde localStorage. */
   hidratado: boolean;
 
-  setPeriodo: (periodo: string) => void;
-  setFacultad: (facultad: string) => void;
-  setPrograma: (programa: string) => void;
-  setActivo: (i: number) => void;
   setHidratado: (v: boolean) => void;
 
-  actualizarDocente: (d: Docente) => void;
-  agregarDocente: () => number;
-  eliminarDocente: (i: number) => Docente | null;
-  reiniciar: () => void;
+  crearAsignacion: (datos: Pick<Asignacion, "periodo" | "facultad" | "programa">) => string;
+  actualizarAsignacion: (id: string, cambios: Partial<Asignacion>) => void;
+  eliminarAsignacion: (id: string) => Asignacion | null;
+
+  agregarDocente: (asignacionId: string) => string | null;
+  actualizarDocente: (asignacionId: string, docente: Docente) => void;
+  eliminarDocente: (asignacionId: string, docenteId: string) => Docente | null;
 }
 
-const estadoInicial = () => ({
-  periodo: "2026-2",
-  facultad: "",
-  programa: "",
-  docentes: [nuevoDocente()],
-  activo: 0,
-});
+/** Selector puro: evita repetir el `find` en cada vista. */
+export const buscarAsignacion = (s: AsignacionStore, id: string) =>
+  s.asignaciones.find((a) => a.id === id);
 
 export const useAsignacionStore = create<AsignacionStore>()(
   persist(
-    (set, get) => ({
-      ...estadoInicial(),
-      hidratado: false,
-
-      setPeriodo: (periodo) => set({ periodo }),
-
-      // Cambiar de facultad invalida el programa elegido.
-      setFacultad: (facultad) => set({ facultad, programa: "" }),
-
-      setPrograma: (programa) => set({ programa }),
-      setActivo: (activo) => set({ activo }),
-      setHidratado: (hidratado) => set({ hidratado }),
-
-      actualizarDocente: (d) =>
+    (set, get) => {
+      /**
+       * Aplica un cambio a una asignación y refresca su marca de tiempo.
+       * Todas las mutaciones pasan por aquí para que `actualizada` nunca
+       * quede desfasada respecto al contenido.
+       */
+      const editar = (id: string, fn: (a: Asignacion) => Asignacion) =>
         set((s) => ({
-          docentes: s.docentes.map((x, i) => (i === s.activo ? d : x)),
-        })),
-
-      agregarDocente: () => {
-        const indice = get().docentes.length;
-        set((s) => ({ docentes: [...s.docentes, nuevoDocente()], activo: indice }));
-        return indice;
-      },
-
-      eliminarDocente: (i) => {
-        const { docentes } = get();
-        if (docentes.length === 1) return null;
-        const eliminado = docentes[i];
-        set((s) => ({
-          docentes: s.docentes.filter((_, k) => k !== i),
-          activo: s.activo >= i && s.activo > 0 ? s.activo - 1 : s.activo,
+          asignaciones: s.asignaciones.map((a) =>
+            a.id === id ? { ...fn(a), actualizada: new Date().toISOString() } : a
+          ),
         }));
-        return eliminado;
-      },
 
-      reiniciar: () => set({ ...estadoInicial() }),
-    }),
+      return {
+        asignaciones: [],
+        hidratado: false,
+
+        setHidratado: (hidratado) => set({ hidratado }),
+
+        crearAsignacion: (datos) => {
+          const a = nuevaAsignacion(datos);
+          set((s) => ({ asignaciones: [a, ...s.asignaciones] }));
+          return a.id;
+        },
+
+        actualizarAsignacion: (id, cambios) => editar(id, (a) => ({ ...a, ...cambios })),
+
+        eliminarAsignacion: (id) => {
+          const eliminada = get().asignaciones.find((a) => a.id === id);
+          if (!eliminada) return null;
+          set((s) => ({ asignaciones: s.asignaciones.filter((a) => a.id !== id) }));
+          return eliminada;
+        },
+
+        agregarDocente: (asignacionId) => {
+          const asignacion = get().asignaciones.find((a) => a.id === asignacionId);
+          if (!asignacion) return null;
+          const d = nuevoDocente(asignacion.programa);
+          editar(asignacionId, (a) => ({ ...a, docentes: [...a.docentes, d] }));
+          return d.id;
+        },
+
+        actualizarDocente: (asignacionId, docente) =>
+          editar(asignacionId, (a) => ({
+            ...a,
+            docentes: a.docentes.map((x) => (x.id === docente.id ? docente : x)),
+          })),
+
+        eliminarDocente: (asignacionId, docenteId) => {
+          const a = get().asignaciones.find((x) => x.id === asignacionId);
+          const eliminado = a?.docentes.find((d) => d.id === docenteId);
+          if (!eliminado) return null;
+          editar(asignacionId, (x) => ({
+            ...x,
+            docentes: x.docentes.filter((d) => d.id !== docenteId),
+          }));
+          return eliminado;
+        },
+      };
+    },
     {
       name: "cecar-asignacion-academica",
-      version: 1,
-      // El índice activo es de sesión, no vale la pena persistirlo.
-      partialize: (s) => ({
-        periodo: s.periodo,
-        facultad: s.facultad,
-        programa: s.programa,
-        docentes: s.docentes,
-      }),
+      // v1 guardaba una sola asignación en la raíz; se descarta al migrar.
+      version: 2,
+      migrate: () => ({ asignaciones: [] }),
+      partialize: (s) => ({ asignaciones: s.asignaciones }),
       onRehydrateStorage: () => (state) => {
         state?.setHidratado(true);
       },

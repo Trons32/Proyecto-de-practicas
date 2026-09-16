@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import {
-  ROLES,
   CONTRATOS,
   NIVELES_FORMACION,
   CATEGORIAS_MINCIENCIAS,
@@ -11,11 +10,13 @@ import {
   SEDES,
   JORNADAS,
   MODALIDADES,
-  REGLAS_DEDICACION,
-  MAX_DESCARGAS,
-  MAX_ADMINISTRATIVAS,
-  MAX_CURSOS,
+  PROGRAMAS,
+  SEMESTRES,
+  GRUPOS,
+  codigoDePrograma,
+  type Rol as RolDescarga,
 } from "@/lib/catalogos";
+import { useConfigStore } from "@/lib/stores/config-store";
 import {
   Docente,
   Curso,
@@ -30,8 +31,7 @@ import { Hallazgo, Totales } from "@/lib/calculo";
 import { REGLAS, type CamposDocente } from "@/lib/esquema-docente";
 import { Campo, Entrada, Seleccion, Seccion, Boton, Insignia } from "./ui";
 import { sileo } from "@/lib/toast";
-import { FiPlus, FiTrash2, FiAlertCircle, FiAlertTriangle } from "./iconos";
-import ResumenHoras from "./ResumenHoras";
+import { FiPlus, FiTrash2, FiAlertCircle, FiAlertTriangle, FiRefreshCw } from "./iconos";
 
 const ETIQUETA_TIPO = {
   DOCENCIA: "Docencia",
@@ -40,7 +40,14 @@ const ETIQUETA_TIPO = {
 } as const;
 
 /** El tipo no va en el texto de la opción: lo muestra la insignia de al lado. */
-const OPCIONES_ROL = ROLES.map((r) => ({ valor: String(r.id), texto: r.nombre }));
+// Se construye dentro del componente: los roles son parametrizables.
+
+/** Los tres componentes del apoyo académico, en el orden del formato. */
+const APOYO = [
+  { clave: "preparacion", etiqueta: "Preparación de clases" },
+  { clave: "atencion", etiqueta: "Atención a estudiantes" },
+  { clave: "comunidades", etiqueta: "Comunidades académicas" },
+] as const;
 
 export default function FormularioDocente({
   docente,
@@ -110,14 +117,45 @@ export default function FormularioDocente({
   const invalido = (nombre: keyof CamposDocente) =>
     Boolean(erroresRHF[nombre]) || errores.has(nombre);
 
+  // Roles, reglas y límites son parametrizables por el administrador.
+  const roles = useConfigStore((s) => s.roles);
+  const reglas = useConfigStore((s) => s.reglas);
+  const limites = useConfigStore((s) => s.limites);
+
   const dedicaciones = docente.tipoContrato ? Object.keys(CONTRATOS[docente.tipoContrato] ?? {}) : [];
   const categorias =
     docente.tipoContrato && docente.dedicacion
       ? (CONTRATOS[docente.tipoContrato]?.[docente.dedicacion] ?? [])
       : [];
 
-  const regla = REGLAS_DEDICACION[docente.dedicacion];
-  const apoyoBloqueado = Boolean(regla);
+  const OPCIONES_ROL = useMemo(
+    () => roles.map((r) => ({ valor: String(r.id), texto: r.nombre })),
+    [roles]
+  );
+
+  const regla = reglas[docente.dedicacion];
+
+  /**
+   * Las horas de apoyo se precargan desde la dedicación, pero el
+   * coordinador puede ajustarlas: la carga real cambia a medida que
+   * completa la asignación. `ajustado` solo sirve para ofrecer la vuelta
+   * a los valores del formato institucional.
+   */
+  const ajustado = Boolean(regla) && APOYO.some(({ clave }) => docente[clave] !== regla[clave]);
+
+  const restaurarApoyo = () => {
+    if (!regla) return;
+    onCambio({
+      ...docente,
+      preparacion: regla.preparacion,
+      atencion: regla.atencion,
+      comunidades: regla.comunidades,
+    });
+    sileo.info({
+      title: "Horas de apoyo restauradas",
+      description: `${regla.preparacion} + ${regla.atencion} + ${regla.comunidades} h según la dedicación.`,
+    });
+  };
 
   /* Avisa una sola vez al cruzar el tope de horas, no en cada pulsación. */
   const excede = totales.maxHoras !== null && totales.totalSemanal > totales.maxHoras;
@@ -154,8 +192,10 @@ export default function FormularioDocente({
 
   const num = (v: string): number | null => (v === "" ? null : Number(v));
 
+  // El resumen de dedicación lo coloca la página, en su propia columna
+  // sticky: así sobrevive al ancho que le quita la barra lateral.
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_20rem] xl:grid-cols-[1fr_22rem]">
+    <div className="min-w-0">
       <div className="min-w-0 space-y-6">
         {/* ---------------- Información del docente ---------------- */}
         <Seccion
@@ -303,7 +343,10 @@ export default function FormularioDocente({
                 disabled={!docente.tipoContrato}
                 placeholder={docente.tipoContrato ? "Seleccione…" : "Elija el contrato"}
                 onChange={(e) =>
-                  onCambio({ ...aplicarReglaDedicacion(docente, e.target.value), categoria: "" })
+                  onCambio({
+                    ...aplicarReglaDedicacion(docente, e.target.value, reglas),
+                    categoria: "",
+                  })
                 }
               />
             </Campo>
@@ -338,21 +381,25 @@ export default function FormularioDocente({
         {/* ---------------- Cursos ---------------- */}
         <Seccion
           titulo="Cursos asignados"
-          descripcion={`${docente.cursos.length} de ${MAX_CURSOS} · las horas de clase salen de la intensidad horaria`}
+          descripcion={`${docente.cursos.length} de ${limites.maxCursos} · las horas de clase salen de la intensidad horaria`}
           accion={
             <Boton
               variante="secundario"
               onClick={() => {
-                if (docente.cursos.length >= MAX_CURSOS) {
+                if (docente.cursos.length >= limites.maxCursos) {
                   sileo.warning({
                     title: "Límite de cursos alcanzado",
-                    description: `El formato permite hasta ${MAX_CURSOS} cursos por docente.`,
+                    description: `El formato permite hasta ${limites.maxCursos} cursos por docente.`,
                   });
                   return;
                 }
                 set("cursos", [
                   ...docente.cursos,
-                  { ...nuevoCurso(), nombrePrograma: programaPorDefecto },
+                  {
+                    ...nuevoCurso(),
+                    nombrePrograma: programaPorDefecto,
+                    codigoPrograma: codigoDePrograma(programaPorDefecto),
+                  },
                 ]);
               }}
             >
@@ -385,6 +432,29 @@ export default function FormularioDocente({
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {/* El curso puede pertenecer a otro programa cuando el
+                      docente presta servicio a varias carreras. */}
+                  <Campo etiqueta="Programa" className="xl:col-span-3">
+                    <Seleccion
+                      opciones={PROGRAMAS.map((p) => p.nombre)}
+                      value={c.nombrePrograma}
+                      onChange={(e) =>
+                        setCurso(c.id, {
+                          nombrePrograma: e.target.value,
+                          codigoPrograma: codigoDePrograma(e.target.value),
+                        })
+                      }
+                    />
+                  </Campo>
+
+                  <Campo etiqueta="Código programa">
+                    <Entrada
+                      value={c.codigoPrograma}
+                      onChange={(e) => setCurso(c.id, { codigoPrograma: e.target.value })}
+                      placeholder="181"
+                    />
+                  </Campo>
+
                   <Campo etiqueta="Código curso">
                     <Entrada
                       value={c.codigoCurso}
@@ -411,21 +481,18 @@ export default function FormularioDocente({
                   </Campo>
 
                   <Campo etiqueta="Semestre">
-                    <Entrada
-                      type="number"
-                      min={1}
-                      max={12}
-                      value={c.semestre ?? ""}
+                    <Seleccion
+                      opciones={SEMESTRES}
+                      value={c.semestre === null ? "" : String(c.semestre)}
                       onChange={(e) => setCurso(c.id, { semestre: num(e.target.value) })}
-                      placeholder="6"
                     />
                   </Campo>
 
                   <Campo etiqueta="Grupo / bloque">
-                    <Entrada
+                    <Seleccion
+                      opciones={GRUPOS}
                       value={c.grupo}
                       onChange={(e) => setCurso(c.id, { grupo: e.target.value })}
-                      placeholder="1"
                     />
                   </Campo>
 
@@ -488,15 +555,15 @@ export default function FormularioDocente({
         <div className="grid gap-6">
           <Seccion
             titulo="Descargas directas"
-            descripcion={`${docente.descargas.length} de ${MAX_DESCARGAS}`}
+            descripcion={`${docente.descargas.length} de ${limites.maxDescargas}`}
             accion={
               <Boton
                 variante="secundario"
                 onClick={() => {
-                  if (docente.descargas.length >= MAX_DESCARGAS) {
+                  if (docente.descargas.length >= limites.maxDescargas) {
                     sileo.warning({
                       title: "Límite de descargas alcanzado",
-                      description: `El formato permite hasta ${MAX_DESCARGAS} descargas directas (R1, R2, R3).`,
+                      description: `El formato permite hasta ${limites.maxDescargas} descargas directas (R1, R2, R3).`,
                     });
                     return;
                   }
@@ -508,6 +575,8 @@ export default function FormularioDocente({
             }
           >
             <ListaActividades
+              roles={roles}
+              opcionesRol={OPCIONES_ROL}
               items={docente.descargas}
               prefijo="R"
               vacio="Sin descargas directas."
@@ -523,15 +592,15 @@ export default function FormularioDocente({
 
           <Seccion
             titulo="Actividades administrativas"
-            descripcion={`${docente.administrativas.length} de ${MAX_ADMINISTRATIVAS}`}
+            descripcion={`${docente.administrativas.length} de ${limites.maxAdministrativas}`}
             accion={
               <Boton
                 variante="secundario"
                 onClick={() => {
-                  if (docente.administrativas.length >= MAX_ADMINISTRATIVAS) {
+                  if (docente.administrativas.length >= limites.maxAdministrativas) {
                     sileo.warning({
                       title: "Límite de actividades alcanzado",
-                      description: `El formato permite hasta ${MAX_ADMINISTRATIVAS} actividades administrativas (R1, R2, R3).`,
+                      description: `El formato permite hasta ${limites.maxAdministrativas} actividades administrativas (R1, R2, R3).`,
                     });
                     return;
                   }
@@ -543,6 +612,8 @@ export default function FormularioDocente({
             }
           >
             <ListaActividades
+              roles={roles}
+              opcionesRol={OPCIONES_ROL}
               items={docente.administrativas}
               prefijo="R"
               vacio="Sin actividades administrativas."
@@ -561,39 +632,37 @@ export default function FormularioDocente({
         <Seccion
           titulo="Horas de apoyo académico"
           descripcion={
-            apoyoBloqueado
-              ? "Definidas por la dedicación del docente según el formato institucional"
-              : "Seleccione una dedicación para aplicar los valores institucionales"
+            regla
+              ? "Se precargan según la dedicación; ajústelas si la asignación lo requiere"
+              : "Al elegir una dedicación se aplican los valores institucionales"
+          }
+          accion={
+            ajustado && (
+              <Boton variante="secundario" onClick={restaurarApoyo}>
+                <FiRefreshCw aria-hidden /> Restaurar
+              </Boton>
+            )
           }
         >
           <div className="grid gap-4 sm:grid-cols-3">
-            <Campo etiqueta="Preparación de clases">
-              <Entrada
-                type="number"
-                min={0}
-                value={docente.preparacion}
-                disabled={apoyoBloqueado}
-                onChange={(e) => set("preparacion", Number(e.target.value) || 0)}
-              />
-            </Campo>
-            <Campo etiqueta="Atención a estudiantes">
-              <Entrada
-                type="number"
-                min={0}
-                value={docente.atencion}
-                disabled={apoyoBloqueado}
-                onChange={(e) => set("atencion", Number(e.target.value) || 0)}
-              />
-            </Campo>
-            <Campo etiqueta="Comunidades académicas">
-              <Entrada
-                type="number"
-                min={0}
-                value={docente.comunidades}
-                disabled={apoyoBloqueado}
-                onChange={(e) => set("comunidades", Number(e.target.value) || 0)}
-              />
-            </Campo>
+            {APOYO.map(({ clave, etiqueta }) => (
+              <Campo
+                key={clave}
+                etiqueta={etiqueta}
+                ayuda={
+                  regla && docente[clave] !== regla[clave]
+                    ? `Institucional: ${regla[clave]} h`
+                    : undefined
+                }
+              >
+                <Entrada
+                  type="number"
+                  min={0}
+                  value={docente[clave]}
+                  onChange={(e) => set(clave, Number(e.target.value) || 0)}
+                />
+              </Campo>
+            ))}
           </div>
 
           <Campo etiqueta="Observaciones" className="mt-4">
@@ -631,10 +700,6 @@ export default function FormularioDocente({
           </Seccion>
         )}
       </div>
-
-      <aside className="no-imprimir">
-        <ResumenHoras t={totales} />
-      </aside>
     </div>
   );
 }
@@ -645,12 +710,17 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
   items,
   prefijo,
   vacio,
+  roles,
+  opcionesRol,
   onCambio,
   onQuitar,
 }: {
   items: T[];
   prefijo: string;
   vacio: string;
+  /** Roles vigentes, que el administrador puede haber parametrizado. */
+  roles: RolDescarga[];
+  opcionesRol: { valor: string; texto: string }[];
   onCambio: (id: string, cambios: Partial<T>) => void;
   onQuitar: (item: T) => void;
 }) {
@@ -665,7 +735,7 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
   return (
     <div className="space-y-4">
       {items.map((x, i) => {
-        const rol = ROLES.find((r) => r.id === x.rolId);
+        const rol = roles.find((r) => r.id === x.rolId);
         const tono =
           rol?.tipo === "INVESTIGACION" ? "azul" : rol?.tipo === "EXTENSION" ? "ambar" : "verde";
         return (
@@ -695,7 +765,7 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
               <Campo etiqueta="Rol">
                 <Seleccion
                   className="w-full"
-                  opciones={OPCIONES_ROL}
+                  opciones={opcionesRol}
                   value={x.rolId === null ? "" : String(x.rolId)}
                   title={rol?.nombre}
                   onChange={(e) =>

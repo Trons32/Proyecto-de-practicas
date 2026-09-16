@@ -19,7 +19,13 @@
   --color-cecar-900: #00351c;
   --color-cecar-950: #002112;
 
-  --color-superficie: #f5f7f6;
+  /* Verde lima institucional (secondary del dashboard: #61a60e) */
+  --color-lima-500: #61a60e;
+  --color-lima-600: #55920c;
+  --color-lima-700: #467a0a;
+
+  /* Equivale al bg-gray-50 del dashboard institucional */
+  --color-superficie: #f9fafb;
   --color-panel: #ffffff;
   --color-borde: #dfe5e2;
   --color-texto: #16201b;
@@ -70,12 +76,29 @@ input[type="number"] {
 }
 
 /* Foco visible y consistente en todo el formulario */
+/**
+ * Campo de formulario.
+ *
+ * El padding horizontal se declara como variable y no con `px-3`: Tailwind
+ * emite sus utilidades antes que las clases de componente, así que un
+ * `ps-11` en el elemento —el hueco para un icono— perdería contra `.campo`
+ * por orden, no por especificidad, y el texto quedaría bajo el icono.
+ * Con `:not([class*="ps-"])` la clase solo pone el padding que nadie pidió.
+ */
 .campo {
-  @apply w-full rounded-lg border border-[var(--color-borde)] bg-white px-3 py-2 text-sm
+  @apply w-full rounded-lg border border-[var(--color-borde)] bg-white py-2 text-sm
          text-[var(--color-texto)] transition
          placeholder:text-[var(--color-texto-suave)]/60
          focus:border-cecar-500 focus:ring-2 focus:ring-cecar-500/25 focus:outline-none
          disabled:cursor-not-allowed disabled:bg-[var(--color-superficie)] disabled:text-[var(--color-texto-suave)];
+}
+
+.campo:not([class*="ps-"]):not([class*="px-"]) {
+  padding-inline-start: calc(var(--spacing) * 3);
+}
+
+.campo:not([class*="pe-"]):not([class*="px-"]) {
+  padding-inline-end: calc(var(--spacing) * 3);
 }
 
 .campo-error {
@@ -88,6 +111,74 @@ input[type="number"] {
 
 .tarjeta {
   @apply rounded-xl border border-[var(--color-borde)] bg-[var(--color-panel)] shadow-[var(--shadow-panel)];
+}
+
+/* ------------------------------------------------------------------
+   Dashboard institucional: sombra y entrada de las tarjetas, y el
+   levantado al pasar el cursor por las tarjetas de estadística.
+   ------------------------------------------------------------------ */
+@keyframes aparecer-arriba {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tarjeta-sombra {
+  box-shadow: 0 10px 30px -5px rgb(0 0 0 / 0.1);
+  animation: aparecer-arriba 0.6s ease-out;
+}
+
+.tarjeta-stat {
+  transition: all 0.3s ease;
+}
+
+.tarjeta-stat:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 35px -5px rgb(0 0 0 / 0.15);
+}
+
+/* ------------------------------------------------------------------
+   Resumen de dedicación. En la columna lateral (>=xl) sus tres bloques
+   —total, barras y desglose— van apilados; cuando el resumen cae a lo
+   ancho bajo el formulario se reparten en línea para no crecer a lo alto.
+   ------------------------------------------------------------------ */
+.resumen-cuerpo > * + * {
+  margin-top: 1.25rem;
+}
+
+@media (min-width: 48rem) and (max-width: 79.999rem) {
+  .resumen-cuerpo {
+    display: grid;
+    grid-template-columns: minmax(11rem, 0.8fr) 1.2fr 1.4fr;
+    align-items: start;
+    gap: 1.5rem;
+  }
+  .resumen-cuerpo > * + * {
+    margin-top: 0;
+  }
+}
+
+/* Fondo del login: foto institucional oscurecida para que la tarjeta
+   blanca y el pie en blanco mantengan contraste. */
+.login-fondo {
+  background:
+    linear-gradient(rgb(0 0 0 / 0.4), rgb(0 0 0 / 0.4)),
+    url("/bg_bienestar.webp") no-repeat center center fixed;
+  background-size: cover;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tarjeta-sombra {
+    animation: none;
+  }
+  .tarjeta-stat:hover {
+    transform: none;
+  }
 }
 
 @media print {

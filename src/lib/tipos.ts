@@ -1,4 +1,4 @@
-import { REGLAS_DEDICACION } from "./catalogos";
+import { REGLAS_DEDICACION, codigoDePrograma, type ReglaDedicacion } from "./catalogos";
 
 export interface Descarga {
   id: string;
@@ -52,10 +52,21 @@ export interface Docente {
   cursos: Curso[];
 }
 
+/**
+ * Una asignación pasa a "completada" cuando el coordinador la cierra;
+ * mientras tanto sigue siendo un borrador al que puede volver.
+ */
+export type EstadoAsignacion = "borrador" | "completada";
+
 export interface Asignacion {
+  id: string;
   periodo: string;
   facultad: string;
   programa: string;
+  estado: EstadoAsignacion;
+  /** ISO 8601. Sirve para ordenar el histórico y mostrar "última edición". */
+  creada: string;
+  actualizada: string;
   docentes: Docente[];
 }
 
@@ -83,7 +94,11 @@ export const nuevoCurso = (): Curso => ({
   modalidad: "",
 });
 
-export const nuevoDocente = (): Docente => ({
+/**
+ * `programa` precarga el primer curso con el programa de la asignación,
+ * que es el caso habitual; el coordinador puede cambiarlo por curso.
+ */
+export const nuevoDocente = (programa = ""): Docente => ({
   id: uid(),
   documento: "",
   nombres: "",
@@ -103,12 +118,47 @@ export const nuevoDocente = (): Docente => ({
   comunidades: 0,
   descargas: [],
   administrativas: [],
-  cursos: [nuevoCurso()],
+  cursos: [{ ...nuevoCurso(), nombrePrograma: programa, codigoPrograma: codigoDePrograma(programa) }],
 });
 
-/** Aplica las horas de apoyo que corresponden a la dedicación elegida. */
-export function aplicarReglaDedicacion(d: Docente, dedicacion: string): Docente {
-  const regla = REGLAS_DEDICACION[dedicacion];
+export const nuevaAsignacion = (
+  datos: Pick<Asignacion, "periodo" | "facultad" | "programa">
+): Asignacion => {
+  const ahora = new Date().toISOString();
+  return {
+    id: uid(),
+    ...datos,
+    estado: "borrador",
+    creada: ahora,
+    actualizada: ahora,
+    // Se crea vacía: el coordinador agrega los docentes uno a uno.
+    docentes: [],
+  };
+};
+
+/**
+ * Periodos académicos seleccionables, del año en curso hacia atrás hasta
+ * 2015, dos por año. Los más recientes primero: son los que se usan.
+ */
+export function periodosAcademicos(hasta = new Date().getFullYear()): string[] {
+  const periodos: string[] = [];
+  for (let año = hasta; año >= 2015; año--) {
+    periodos.push(`${año}-2`, `${año}-1`);
+  }
+  return periodos;
+}
+
+/**
+ * Aplica las horas de apoyo que corresponden a la dedicación elegida.
+ * `reglas` permite usar las que el administrador haya parametrizado; por
+ * defecto son las del formato oficial.
+ */
+export function aplicarReglaDedicacion(
+  d: Docente,
+  dedicacion: string,
+  reglas: Record<string, ReglaDedicacion> = REGLAS_DEDICACION
+): Docente {
+  const regla = reglas[dedicacion];
   if (!regla) return { ...d, dedicacion };
   return {
     ...d,

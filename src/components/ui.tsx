@@ -55,10 +55,12 @@ export function Seleccion({
   const items = opciones.map((o) =>
     typeof o === "string" ? { valor: o, texto: o.replace(/_/g, " ") } : o
   );
+  // El hueco para la flecha se abre con pe-*, no con pr-*: `.campo` ya declara
+  // px-3 y, entre dos reglas de padding-right, gana la de la hoja de estilos.
   return (
     <select
       {...props}
-      className={`campo truncate pr-9 ${error ? "campo-error" : ""} ${className}`}
+      className={`campo truncate pe-9 ${error ? "campo-error" : ""} ${className}`}
     >
       <option value="">{placeholder}</option>
       {items.map((o) => (
@@ -151,6 +153,49 @@ export function Boton({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Tarjeta de estadística del dashboard institucional: borde superior de
+ * color, valor grande y el icono en un círculo tenue a la derecha.
+ */
+export function TarjetaStat({
+  etiqueta,
+  valor,
+  icono,
+  tono = "verde",
+}: {
+  etiqueta: string;
+  valor: ReactNode;
+  icono: ReactNode;
+  tono?: "verde" | "lima" | "ambar" | "rojo";
+}) {
+  const estilos = {
+    verde: { borde: "border-t-cecar-600", fondo: "bg-cecar-600/10", texto: "text-cecar-700" },
+    lima: { borde: "border-t-lima-500", fondo: "bg-lima-500/10", texto: "text-lima-700" },
+    ambar: { borde: "border-t-amber-500", fondo: "bg-amber-500/10", texto: "text-amber-600" },
+    rojo: { borde: "border-t-rose-500", fondo: "bg-rose-500/10", texto: "text-rose-600" },
+  }[tono];
+
+  return (
+    <div
+      className={`tarjeta-stat tarjeta-sombra rounded-xl border-t-4 bg-white p-5 ${estilos.borde}`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-semibold text-[var(--color-texto-suave)]">
+            {etiqueta}
+          </h3>
+          <p className="mt-2 text-3xl font-bold tabular-nums text-[var(--color-texto)]">{valor}</p>
+        </div>
+        <div
+          className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${estilos.fondo} ${estilos.texto}`}
+        >
+          {icono}
+        </div>
+      </div>
+    </div>
   );
 }
 

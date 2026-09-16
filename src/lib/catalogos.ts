@@ -78,7 +78,12 @@ export const FACULTADES: string[] = [
   "HUMANIDADES_Y_EDUCACIÓN",
 ];
 
-export interface Programa { nombre: string; facultad: string; }
+/**
+ * `codigo` es el código institucional del programa. Solo se conocen los
+ * que aparecen en el formato oficial; en el resto el coordinador lo
+ * digita y el campo queda vacío.
+ */
+export interface Programa { nombre: string; facultad: string; codigo?: string; }
 
 export const PROGRAMAS: Programa[] = [
   { nombre: "DERECHO", facultad: "DERECHO_Y_CIENCIAS_POLÍTICAS" },
@@ -94,8 +99,8 @@ export const PROGRAMAS: Programa[] = [
   { nombre: "ARQUITECTURA", facultad: "CIENCIAS_BÁSICAS_INGENIERÍAS_Y_ARQUITECTURA" },
   { nombre: "DEPARTAMENTO DE CIENCIAS BÁSICAS", facultad: "CIENCIAS_BÁSICAS_INGENIERÍAS_Y_ARQUITECTURA" },
   { nombre: "DISEÑO INDUSTRIAL", facultad: "CIENCIAS_BÁSICAS_INGENIERÍAS_Y_ARQUITECTURA" },
-  { nombre: "INGENIERÍA DE SISTEMAS", facultad: "CIENCIAS_BÁSICAS_INGENIERÍAS_Y_ARQUITECTURA" },
-  { nombre: "INGENIERÍA INDUSTRIAL", facultad: "CIENCIAS_BÁSICAS_INGENIERÍAS_Y_ARQUITECTURA" },
+  { nombre: "INGENIERÍA DE SISTEMAS", facultad: "CIENCIAS_BÁSICAS_INGENIERÍAS_Y_ARQUITECTURA", codigo: "181" },
+  { nombre: "INGENIERÍA INDUSTRIAL", facultad: "CIENCIAS_BÁSICAS_INGENIERÍAS_Y_ARQUITECTURA", codigo: "182" },
   { nombre: "CIENCIAS DEL DEPORTE Y LA ACTIVIAD FÍSICA", facultad: "HUMANIDADES_Y_EDUCACIÓN" },
   { nombre: "DEPARTAMENTO DE HUMANIDADES", facultad: "HUMANIDADES_Y_EDUCACIÓN" },
   { nombre: "INGLÉS INSTITUCIONAL", facultad: "HUMANIDADES_Y_EDUCACIÓN" },
@@ -136,6 +141,14 @@ export const NIVELES_FORMACION = ["PREGRADO", "ESPECIALIZACIÓN", "MAGISTER", "D
 export const CATEGORIAS_MINCIENCIAS = ["ASOCIADO", "JUNIOR", "SENIOR", "RECONOCIDO", "NO POSEE", "ÚNICA"];
 export const SECTORES = ["SECTOR PRIVADO", "SECTOR PÚBLICO", "SECTOR PÚBLICO Y SECTOR PRIVADO"];
 export const SEDES = ["SINCELEJO", "CAT_VILLAVICENCIO", "CAT"];
+/** Semestres y grupos del 1 al 10: se eligen, no se digitan. */
+export const SEMESTRES = Array.from({ length: 10 }, (_, i) => String(i + 1));
+export const GRUPOS = SEMESTRES;
+
+/** Código institucional del programa, si el formato oficial lo registra. */
+export const codigoDePrograma = (nombre: string): string =>
+  PROGRAMAS.find((p) => p.nombre === nombre)?.codigo ?? "";
+
 export const JORNADAS = ["DIURNA", "NOCTURNA", "MIXTA"];
 export const MODALIDADES = ["PRESENCIAL", "VIRTUAL", "EAD"];
 

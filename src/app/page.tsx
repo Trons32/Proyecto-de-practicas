@@ -1,338 +1,246 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { FACULTADES, PROGRAMAS } from "@/lib/catalogos";
-import { calcularTotales, validarDocente } from "@/lib/calculo";
+import { useMemo } from "react";
+import Link from "next/link";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
-import FormularioDocente from "@/components/FormularioDocente";
-import ModalConfirmacion from "@/components/ModalConfirmacion";
-import { Boton, Insignia, Seleccion, Campo, Entrada } from "@/components/ui";
-import { sileo } from "@/lib/toast";
-import { FiPlus, FiTrash2, FiSave, FiUsers, FiClock, FiAlertCircle, FiCheckCircle } from "@/components/iconos";
+import { resumirAsignacion, desde, legible } from "@/lib/resumen";
+import { useConfiguracion } from "@/lib/usar-configuracion";
+import Encabezado from "@/components/Encabezado";
+import { Boton, TarjetaStat, Insignia } from "@/components/ui";
+import {
+  FiPlus,
+  FiUsers,
+  FiClock,
+  FiAlertCircle,
+  FiCheckCircle,
+  FiFileText,
+  FiLayers,
+} from "@/components/iconos";
 
-export default function Pagina() {
-  const periodo = useAsignacionStore((s) => s.periodo);
-  const facultad = useAsignacionStore((s) => s.facultad);
-  const programa = useAsignacionStore((s) => s.programa);
-  const docentes = useAsignacionStore((s) => s.docentes);
-  const activo = useAsignacionStore((s) => s.activo);
+export default function Inicio() {
+  const asignaciones = useAsignacionStore((s) => s.asignaciones);
+  const hidratado = useAsignacionStore((s) => s.hidratado);
 
-  const setPeriodo = useAsignacionStore((s) => s.setPeriodo);
-  const setFacultad = useAsignacionStore((s) => s.setFacultad);
-  const setPrograma = useAsignacionStore((s) => s.setPrograma);
-  const setActivo = useAsignacionStore((s) => s.setActivo);
-  const actualizarDocente = useAsignacionStore((s) => s.actualizarDocente);
-  const agregarAlStore = useAsignacionStore((s) => s.agregarDocente);
-  const eliminarDelStore = useAsignacionStore((s) => s.eliminarDocente);
+  const config = useConfiguracion();
 
-  const programas = useMemo(
-    () => PROGRAMAS.filter((p) => p.facultad === facultad).map((p) => p.nombre),
-    [facultad]
-  );
+  const { enProgreso, historico, global } = useMemo(() => {
+    const conResumen = asignaciones.map((a) => ({ a, r: resumirAsignacion(a, config) }));
+    // La más recientemente editada de las que siguen abiertas es la que
+    // el coordinador quiere continuar.
+    const borradores = conResumen
+      .filter(({ a }) => a.estado === "borrador")
+      .sort((x, y) => y.a.actualizada.localeCompare(x.a.actualizada));
 
-  /** Totales y validaciones de todos los docentes, en vivo. */
-  const analisis = useMemo(
-    () =>
-      docentes.map((d) => {
-        const t = calcularTotales(d);
-        return { totales: t, hallazgos: validarDocente(d, t) };
-      }),
-    [docentes]
-  );
+    const enProgreso = borradores[0] ?? null;
+    const historico = conResumen
+      .filter(({ a }) => a.id !== enProgreso?.a.id)
+      .sort((x, y) => y.a.actualizada.localeCompare(x.a.actualizada));
 
-  const indice = Math.min(activo, docentes.length - 1);
-  const docente = docentes[indice];
-  const actual = analisis[indice];
+    return {
+      enProgreso,
+      historico,
+      global: {
+        asignaciones: conResumen.length,
+        docentes: conResumen.reduce((s, { r }) => s + r.totalDocentes, 0),
+        horas: conResumen.reduce((s, { r }) => s + r.horasTotales, 0),
+      },
+    };
+  }, [asignaciones, config]);
 
-  const totalErrores = analisis.reduce(
-    (s, a) => s + a.hallazgos.filter((h) => h.severidad === "error").length,
-    0
-  );
-  const horasTotales = analisis.reduce((s, a) => s + a.totales.totalSemanal, 0);
-  const estudiantesTotales = analisis.reduce((s, a) => s + a.totales.totalEstudiantes, 0);
-
-  const agregarDocente = () => {
-    const i = agregarAlStore();
-    sileo.info({
-      title: `Docente ${i + 1} agregado`,
-      description: "Complete los datos y los cursos asignados.",
-    });
-  };
-
-  /** Índice pendiente de confirmar; null si el modal está cerrado. */
-  const [porEliminar, setPorEliminar] = useState<number | null>(null);
-
-  const pedirEliminar = (i: number) => {
-    if (docentes.length === 1) {
-      sileo.warning({
-        title: "No se puede eliminar",
-        description: "La asignación debe tener al menos un docente.",
-      });
-      return;
-    }
-    setPorEliminar(i);
-  };
-
-  /** Qué se pierde al eliminar, para que el modal no sea un sí/no a ciegas. */
-  const resumenPorEliminar = useMemo(() => {
-    if (porEliminar === null) return undefined;
-    const d = docentes[porEliminar];
-    const t = analisis[porEliminar]?.totales;
-    if (!d || !t) return undefined;
-
-    const nombre = d.nombres || `Docente ${porEliminar + 1}`;
-    const cursos = d.cursos.filter((c) => c.nombreCurso.trim() || c.codigoCurso.trim()).length;
-    const partes = [`${t.totalSemanal} h`];
-    if (cursos > 0) partes.push(`${cursos} ${cursos === 1 ? "curso" : "cursos"}`);
-
-    return `${nombre} · ${partes.join(" · ")}`;
-  }, [porEliminar, docentes, analisis]);
-
-  const confirmarEliminar = () => {
-    if (porEliminar === null) return;
-    const i = porEliminar;
-    const eliminado = eliminarDelStore(i);
-    setPorEliminar(null);
-    if (!eliminado) return;
-    sileo.success({
-      title: "Docente eliminado",
-      description: eliminado.nombres || `Docente ${i + 1}`,
-    });
-  };
-
-  const guardar = () => {
-    if (!facultad || !programa) {
-      sileo.error({
-        title: "Faltan datos de la asignación",
-        description: "Seleccione la facultad y el programa antes de guardar.",
-      });
-      return;
-    }
-
-    if (totalErrores > 0) {
-      sileo.error({
-        title: "La asignación tiene datos pendientes",
-        description: `Corrija ${totalErrores} ${totalErrores === 1 ? "dato" : "datos"} antes de guardar.`,
-      });
-      return;
-    }
-
-    const avisos = analisis.reduce(
-      (s, a) => s + a.hallazgos.filter((h) => h.severidad === "aviso").length,
-      0
+  // Hasta que localStorage se rehidrate, el estado real es desconocido:
+  // pintar "no hay asignaciones" sería mentir por un instante.
+  if (!hidratado) {
+    return (
+      <main className="px-4 py-6 sm:p-8">
+        <Encabezado titulo="Asignación Académica" descripcion="Cargando…" />
+      </main>
     );
-
-    // Aquí irá el POST al API route que persiste en SQL Server.
-    console.log("Asignación a guardar:", { periodo, facultad, programa, docentes });
-
-    sileo.success({
-      title: "Asignación guardada",
-      description:
-        `${docentes.length} ${docentes.length === 1 ? "docente" : "docentes"} · ` +
-        `${horasTotales} horas semanales` +
-        (avisos > 0 ? ` · ${avisos} ${avisos === 1 ? "advertencia" : "advertencias"}` : ""),
-    });
-  };
+  }
 
   return (
-    <div className="min-h-screen">
-      {/* ---------------- Barra superior ---------------- */}
-      <header className="sticky top-0 z-30 border-b border-cecar-800/40 bg-cecar-700 text-white shadow-md">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-lg bg-white/15 text-lg font-bold ring-1 ring-white/25">
-              C
-            </div>
+    <main className="px-4 py-6 sm:p-8">
+      <Encabezado
+        titulo="Asignación Académica"
+        descripcion="Corporación Universitaria del Caribe · Vicerrectoría Académica"
+      >
+        <Link href="/asignacion/nueva">
+          <Boton>
+            <FiPlus aria-hidden /> Crear asignación
+          </Boton>
+        </Link>
+      </Encabezado>
+
+      {/* ---------------- Totales globales ---------------- */}
+      <section className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
+        <TarjetaStat
+          etiqueta="Asignaciones"
+          valor={global.asignaciones}
+          tono="verde"
+          icono={<FiLayers className="h-6 w-6" aria-hidden />}
+        />
+        <TarjetaStat
+          etiqueta="Docentes asignados"
+          valor={global.docentes}
+          tono="lima"
+          icono={<FiUsers className="h-6 w-6" aria-hidden />}
+        />
+        <TarjetaStat
+          etiqueta="Horas semanales"
+          valor={global.horas}
+          tono="verde"
+          icono={<FiClock className="h-6 w-6" aria-hidden />}
+        />
+      </section>
+
+      {/* ---------------- Asignación en progreso ---------------- */}
+      {enProgreso ? (
+        <section className="tarjeta tarjeta-sombra mb-8 overflow-hidden">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-borde)] bg-cecar-50/60 px-5 py-4">
             <div>
-              <h1 className="text-sm leading-tight font-bold tracking-wide sm:text-base">
-                Asignación Académica
-              </h1>
-              <p className="text-[11px] text-cecar-100">
-                Corporación Universitaria del Caribe · Vicerrectoría Académica
+              <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">
+                Asignación en progreso
+              </h3>
+              <p className="mt-0.5 text-xs text-[var(--color-texto-suave)]">
+                Última edición {desde(enProgreso.a.actualizada)}
               </p>
             </div>
-          </div>
+            <Link href={`/asignacion/${enProgreso.a.id}`}>
+              <Boton>Continuar asignación</Boton>
+            </Link>
+          </header>
 
-          <div className="flex items-center gap-2">
-            <span className="hidden text-xs text-cecar-100 sm:inline">
-              Periodo <strong className="text-white">{periodo}</strong>
-            </span>
-            <Boton variante="sobreVerde" onClick={guardar}>
-              <FiSave aria-hidden /> Guardar asignación
-            </Boton>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6">
-        {/* ---------------- Datos de la asignación ---------------- */}
-        <section className="tarjeta mb-6 p-5">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Campo etiqueta="Periodo académico" requerido>
-              <Entrada
-                value={periodo}
-                onChange={(e) => setPeriodo(e.target.value)}
-                placeholder="2026-2"
-              />
-            </Campo>
-
-            <Campo etiqueta="Facultad" requerido className="lg:col-span-2">
-              <Seleccion
-                opciones={FACULTADES}
-                value={facultad}
-                onChange={(e) =>
-                  setFacultad(e.target.value)
-                }
-              />
-            </Campo>
-
-            <Campo etiqueta="Programa" requerido>
-              <Seleccion
-                opciones={programas}
-                value={programa}
-                disabled={!facultad}
-                placeholder={facultad ? "Seleccione…" : "Elija la facultad"}
-                onChange={(e) => setPrograma(e.target.value)}
-              />
-            </Campo>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--color-borde)] pt-4">
-            <Insignia tono="verde">
-              <FiUsers aria-hidden /> {docentes.length} docentes
-            </Insignia>
-            <Insignia tono="azul">
-              <FiClock aria-hidden /> {horasTotales} horas semanales
-            </Insignia>
-            <Insignia>{estudiantesTotales} estudiantes</Insignia>
-            {totalErrores > 0 ? (
-              <Insignia tono="rojo">
-                <FiAlertCircle aria-hidden />{" "}
-                {totalErrores} {totalErrores === 1 ? "dato pendiente" : "datos pendientes"}
-              </Insignia>
-            ) : (
-              <Insignia tono="verde">
-                <FiCheckCircle aria-hidden /> Sin errores
-              </Insignia>
-            )}
-          </div>
-        </section>
-
-        <div className="grid gap-6 lg:grid-cols-[16.5rem_1fr]">
-          {/* ---------------- Lista de docentes ---------------- */}
-          <aside className="no-imprimir lg:sticky lg:top-24 lg:self-start">
-            <div className="tarjeta overflow-hidden">
-              <header className="flex items-center justify-between border-b border-[var(--color-borde)] bg-cecar-50/60 px-4 py-3">
-                <h2 className="text-xs font-bold tracking-wide text-cecar-800 uppercase">Docentes</h2>
-                <span className="text-xs text-[var(--color-texto-suave)]">
-                  {docentes.length}
-                </span>
-              </header>
-
-              <ul className="max-h-[55vh] divide-y divide-[var(--color-borde)] overflow-y-auto">
-                {docentes.map((d, i) => {
-                  const a = analisis[i];
-                  const errs = a.hallazgos.filter((h) => h.severidad === "error").length;
-                  const sel = i === activo;
-                  return (
-                    <li
-                      key={d.id}
-                      className={`flex items-center transition ${
-                        sel ? "bg-cecar-50" : "hover:bg-black/[0.03]"
-                      }`}
-                    >
-                      {/* Seleccionar y eliminar son botones hermanos: anidarlos
-                          produciría HTML inválido. */}
-                      <button
-                        type="button"
-                        onClick={() => setActivo(i)}
-                        className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pl-4 text-left"
-                      >
-                        <span
-                          className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold ${
-                            sel
-                              ? "bg-cecar-600 text-white"
-                              : "bg-black/[0.06] text-[var(--color-texto-suave)]"
-                          }`}
-                        >
-                          {i + 1}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span
-                            className={`block truncate text-sm font-medium ${
-                              sel ? "text-cecar-800" : "text-[var(--color-texto)]"
-                            }`}
-                          >
-                            {d.nombres || "Sin nombre"}
-                          </span>
-                          <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                            <span className="text-[11px] text-[var(--color-texto-suave)]">
-                              {a.totales.totalSemanal} h
-                              {a.totales.maxHoras ? ` / ${a.totales.maxHoras}` : ""}
-                            </span>
-                            {errs > 0 && (
-                              <span
-                                className="rounded-full bg-rose-50 px-1.5 py-px text-[10px] font-semibold
-                                           text-rose-700 ring-1 ring-rose-200 ring-inset"
-                                title={`${errs} ${errs === 1 ? "dato pendiente" : "datos pendientes"}`}
-                              >
-                                Incompleto
-                              </span>
-                            )}
-                          </span>
-                        </span>
-                      </button>
-
-                      {docentes.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => pedirEliminar(i)}
-                          aria-label={`Eliminar ${d.nombres || `docente ${i + 1}`}`}
-                          title="Eliminar docente"
-                          className="mr-2 ml-1 shrink-0 rounded-lg p-2 text-[var(--color-texto-suave)]
-                                     transition hover:bg-rose-50 hover:text-rose-600
-                                     focus:ring-2 focus:ring-rose-500/30 focus:outline-none"
-                        >
-                          <FiTrash2 className="h-4 w-4" aria-hidden />
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-
-              <div className="border-t border-[var(--color-borde)] p-3">
-                <Boton className="w-full" onClick={agregarDocente}>
-                  <FiPlus aria-hidden /> Agregar docente
-                </Boton>
+          <div className="grid gap-6 p-5 lg:grid-cols-[1fr_auto]">
+            <div className="min-w-0">
+              <p className="text-lg font-bold text-[var(--color-texto)]">
+                {legible(enProgreso.a.programa) || "Programa sin definir"}
+              </p>
+              <p className="mt-0.5 text-sm text-[var(--color-texto-suave)]">
+                {legible(enProgreso.a.facultad) || "Facultad sin definir"}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Insignia tono="verde">Periodo {enProgreso.a.periodo}</Insignia>
+                <Insignia tono="ambar">Borrador</Insignia>
+                {enProgreso.r.totalErrores > 0 ? (
+                  <Insignia tono="rojo">
+                    <FiAlertCircle aria-hidden /> {enProgreso.r.totalErrores}{" "}
+                    {enProgreso.r.totalErrores === 1 ? "dato pendiente" : "datos pendientes"}
+                  </Insignia>
+                ) : (
+                  <Insignia tono="verde">
+                    <FiCheckCircle aria-hidden /> Sin datos pendientes
+                  </Insignia>
+                )}
               </div>
             </div>
-          </aside>
 
-          {/* ---------------- Formulario ---------------- */}
-          <div className="min-w-0">
-            <FormularioDocente
-              key={docente.id}
-              docente={docente}
-              totales={actual.totales}
-              hallazgos={actual.hallazgos}
-              programaPorDefecto={programa}
-              onCambio={actualizarDocente}
-            />
+            {/* Resumen rápido: lo que el coordinador quiere ver de un vistazo. */}
+            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:w-[26rem]">
+              <Dato etiqueta="Docentes" valor={enProgreso.r.totalDocentes} />
+              <Dato etiqueta="Horas" valor={enProgreso.r.horasTotales} />
+              <Dato etiqueta="Cursos" valor={enProgreso.r.cursosTotales} />
+              <Dato etiqueta="Estudiantes" valor={enProgreso.r.estudiantesTotales} />
+            </dl>
           </div>
-        </div>
-      </main>
 
-      <ModalConfirmacion
-        abierto={porEliminar !== null}
-        onCerrar={() => setPorEliminar(null)}
-        onConfirmar={confirmarEliminar}
-        titulo="Eliminar docente"
-        mensaje="¿Estás seguro? Esto no se puede deshacer."
-        detalle={resumenPorEliminar}
-        etiquetaConfirmar="Eliminar"
-        peligro
-      />
+          {/* Horas por docente: el detalle que pediste ver desde el inicio. */}
+          {enProgreso.r.docentes.length > 0 && (
+            <ul className="divide-y divide-[var(--color-borde)] border-t border-[var(--color-borde)]">
+              {enProgreso.r.docentes.slice(0, 5).map(({ docente, totales, errores }) => (
+                <li key={docente.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                  <span className="min-w-0 truncate text-sm font-medium text-[var(--color-texto)]">
+                    {docente.nombres || "Sin nombre"}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {errores > 0 && <Insignia tono="rojo">Incompleto</Insignia>}
+                    <span className="text-sm tabular-nums text-[var(--color-texto-suave)]">
+                      <strong className="text-[var(--color-texto)]">{totales.totalSemanal}</strong> h
+                      {totales.maxHoras ? ` / ${totales.maxHoras}` : ""}
+                    </span>
+                  </span>
+                </li>
+              ))}
+              {enProgreso.r.docentes.length > 5 && (
+                <li className="px-5 py-2.5 text-center text-xs text-[var(--color-texto-suave)]">
+                  y {enProgreso.r.docentes.length - 5} docentes más
+                </li>
+              )}
+            </ul>
+          )}
+        </section>
+      ) : (
+        <section className="tarjeta tarjeta-sombra mb-8 p-10 text-center">
+          <FiFileText
+            className="mx-auto h-10 w-10 text-[var(--color-texto-suave)]/40"
+            aria-hidden
+          />
+          <h3 className="mt-3 text-lg font-bold text-[var(--color-texto)]">
+            No hay asignaciones en progreso
+          </h3>
+          <p className="mx-auto mt-1 max-w-md text-sm text-[var(--color-texto-suave)]">
+            Cree una asignación para elegir el periodo académico, la facultad y el programa,
+            y empezar a agregar docentes.
+          </p>
+          <Link href="/asignacion/nueva" className="mt-5 inline-block">
+            <Boton>
+              <FiPlus aria-hidden /> Crear asignación
+            </Boton>
+          </Link>
+        </section>
+      )}
+
+      {/* ---------------- Histórico ---------------- */}
+      {historico.length > 0 && (
+        <section className="tarjeta tarjeta-sombra overflow-hidden">
+          <header className="border-b border-[var(--color-borde)] bg-cecar-50/60 px-5 py-4">
+            <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">
+              Histórico de asignaciones
+            </h3>
+            <p className="mt-0.5 text-xs text-[var(--color-texto-suave)]">
+              {historico.length} {historico.length === 1 ? "asignación" : "asignaciones"}
+            </p>
+          </header>
+
+          <ul className="divide-y divide-[var(--color-borde)]">
+            {historico.map(({ a, r }) => (
+              <li key={a.id}>
+                <Link
+                  href={`/asignacion/${a.id}`}
+                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 transition hover:bg-black/[0.03]"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-[var(--color-texto)]">
+                      {legible(a.programa) || "Programa sin definir"}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-[var(--color-texto-suave)]">
+                      {legible(a.facultad) || "Facultad sin definir"} · editada {desde(a.actualizada)}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 flex-wrap items-center gap-2">
+                    <Insignia>{a.periodo}</Insignia>
+                    <Insignia tono={a.estado === "completada" ? "verde" : "ambar"}>
+                      {a.estado === "completada" ? "Completada" : "Borrador"}
+                    </Insignia>
+                    <span className="text-xs tabular-nums text-[var(--color-texto-suave)]">
+                      {r.totalDocentes} doc · {r.horasTotales} h
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </main>
+  );
+}
+
+function Dato({ etiqueta, valor }: { etiqueta: string; valor: number }) {
+  return (
+    <div className="rounded-lg bg-black/[0.03] px-3 py-2">
+      <dt className="text-[10px] font-semibold tracking-wide text-[var(--color-texto-suave)] uppercase">
+        {etiqueta}
+      </dt>
+      <dd className="mt-0.5 text-xl font-bold tabular-nums text-[var(--color-texto)]">{valor}</dd>
     </div>
   );
 }
