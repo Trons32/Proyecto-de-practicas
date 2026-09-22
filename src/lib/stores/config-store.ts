@@ -12,6 +12,7 @@ import {
   type Rol as RolDescarga,
   type TipoRol,
 } from "@/lib/catalogos";
+import { finDelDia, type Convocatoria } from "@/lib/convocatoria";
 
 export interface Limites {
   maxCursos: number;
@@ -25,12 +26,20 @@ interface ConfigStore {
   /** Roles que pueden elegirse en descargas y actividades administrativas. */
   roles: RolDescarga[];
   limites: Limites;
+  /** Los plazos de entrega, indexados por periodo académico. */
+  convocatorias: Record<string, Convocatoria>;
   hidratado: boolean;
 
   setHidratado: (v: boolean) => void;
 
   actualizarRegla: (dedicacion: string, cambios: Partial<ReglaDedicacion>) => void;
   actualizarLimites: (cambios: Partial<Limites>) => void;
+
+  /** Abre el periodo o mueve su fecha límite. `limite` es AAAA-MM-DD. */
+  abrirConvocatoria: (periodo: string, limite: string) => void;
+  /** Cierra antes de tiempo, o reabre lo cerrado a mano. */
+  cerrarConvocatoria: (periodo: string) => void;
+  reabrirConvocatoria: (periodo: string) => void;
 
   agregarRol: (nombre: string, tipo: TipoRol) => void;
   actualizarRol: (id: number, cambios: Partial<Omit<RolDescarga, "id">>) => void;
@@ -57,6 +66,10 @@ export const useConfigStore = create<ConfigStore>()(
   persist(
     (set, get) => ({
       ...valoresOficiales(),
+      // Fuera de valoresOficiales: las convocatorias son del calendario de
+      // cada semestre, no del formato, y restaurar los valores oficiales no
+      // debe borrar los plazos que ya se anunciaron.
+      convocatorias: {},
       hidratado: false,
 
       setHidratado: (hidratado) => set({ hidratado }),
@@ -70,6 +83,48 @@ export const useConfigStore = create<ConfigStore>()(
         })),
 
       actualizarLimites: (cambios) => set((s) => ({ limites: { ...s.limites, ...cambios } })),
+
+      abrirConvocatoria: (periodo, limite) =>
+        set((s) => {
+          const previa = s.convocatorias[periodo];
+          return {
+            convocatorias: {
+              ...s.convocatorias,
+              [periodo]: {
+                periodo,
+                // Reabrir conserva la apertura original: mover la fecha
+                // límite no vuelve a empezar la convocatoria.
+                apertura: previa?.apertura ?? new Date().toISOString(),
+                limite: finDelDia(limite),
+                cerradaManualmente: false,
+              },
+            },
+          };
+        }),
+
+      cerrarConvocatoria: (periodo) =>
+        set((s) =>
+          s.convocatorias[periodo]
+            ? {
+                convocatorias: {
+                  ...s.convocatorias,
+                  [periodo]: { ...s.convocatorias[periodo], cerradaManualmente: true },
+                },
+              }
+            : s
+        ),
+
+      reabrirConvocatoria: (periodo) =>
+        set((s) =>
+          s.convocatorias[periodo]
+            ? {
+                convocatorias: {
+                  ...s.convocatorias,
+                  [periodo]: { ...s.convocatorias[periodo], cerradaManualmente: false },
+                },
+              }
+            : s
+        ),
 
       agregarRol: (nombre, tipo) =>
         set((s) => ({
@@ -94,8 +149,19 @@ export const useConfigStore = create<ConfigStore>()(
     }),
     {
       name: "cecar-configuracion",
-      version: 1,
-      partialize: (s) => ({ reglas: s.reglas, roles: s.roles, limites: s.limites }),
+      // v2 añadió las convocatorias. Lo guardado en v1 no las tenía: se
+      // completan vacías en vez de descartar la parametrización existente.
+      version: 2,
+      migrate: (guardado) => ({
+        convocatorias: {},
+        ...(guardado as object),
+      }),
+      partialize: (s) => ({
+        reglas: s.reglas,
+        roles: s.roles,
+        limites: s.limites,
+        convocatorias: s.convocatorias,
+      }),
       onRehydrateStorage: () => (state) => {
         state?.setHidratado(true);
       },

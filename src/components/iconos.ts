@@ -18,6 +18,8 @@ export {
   FiAlertTriangle,
   FiCheckCircle,
   FiChevronDown,
+  FiChevronLeft,
+  FiChevronRight,
   FiSearch,
   FiEdit3,
   FiLayers,

@@ -6,7 +6,7 @@ import {
   type Hallazgo,
   type Configuracion,
 } from "./calculo";
-import type { Asignacion, Docente } from "./tipos";
+import { esEditable, type Asignacion, type Docente, type EstadoAsignacion } from "./tipos";
 
 export interface AnalisisDocente {
   docente: Docente;
@@ -58,6 +58,35 @@ export function resumirAsignacion(
     totalErrores: sumar((x) => x.errores),
     completos: docentes.filter((x) => x.errores === 0).length,
   };
+}
+
+/**
+ * Separa la asignación en curso del histórico.
+ *
+ * "En curso" es aquella en la que el coordinador todavía tiene trabajo por
+ * hacer: un borrador sin enviar o una devuelta para corregir. Una
+ * corrección manda sobre un borrador aunque se haya editado después,
+ * porque lleva un plazo encima y es lo que hay que atender primero.
+ *
+ * Todo lo demás —lo entregado, lo aprobado y los borradores que quedaron
+ * atrás— es histórico, de más reciente a más antiguo.
+ *
+ * Vive aquí, y no en cada vista, para que el inicio y el listado no puedan
+ * señalar asignaciones distintas como "la actual".
+ */
+export function separarEnProgreso<
+  T extends { id: string; estado: EstadoAsignacion; actualizada: string },
+>(asignaciones: T[]): { enProgreso: T | null; historico: T[] } {
+  const reciente = (a: T, b: T) => b.actualizada.localeCompare(a.actualizada);
+
+  const abiertas = asignaciones.filter((a) => esEditable(a.estado));
+  const enCorreccion = abiertas.filter((a) => a.estado === "en_correccion").sort(reciente);
+  const borradores = abiertas.filter((a) => a.estado === "borrador").sort(reciente);
+
+  const enProgreso = enCorreccion[0] ?? borradores[0] ?? null;
+  const historico = asignaciones.filter((a) => a.id !== enProgreso?.id).sort(reciente);
+
+  return { enProgreso, historico };
 }
 
 /**

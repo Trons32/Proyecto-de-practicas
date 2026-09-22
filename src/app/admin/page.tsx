@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
-import { useConfigStore } from "@/lib/stores/config-store";
 import { resumirAsignacion } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import Encabezado from "@/components/Encabezado";
@@ -30,7 +29,8 @@ const MODULOS = [
   {
     icono: FiFileText,
     titulo: "Asignaciones",
-    texto: "Revisar a detalle las asignaciones que suben los coordinadores.",
+    texto: "Revisar, aprobar y devolver las asignaciones que suben los coordinadores.",
+    href: "/admin/asignaciones",
   },
   {
     icono: FiBarChart2,
@@ -46,7 +46,6 @@ const MODULOS = [
 
 export default function PanelAdmin() {
   const asignaciones = useAsignacionStore((s) => s.asignaciones);
-  const roles = useConfigStore((s) => s.roles);
   const config = useConfiguracion();
 
   const totales = useMemo(() => {
@@ -55,6 +54,11 @@ export default function PanelAdmin() {
       asignaciones: r.length,
       docentes: r.reduce((s, x) => s + x.totalDocentes, 0),
       horas: r.reduce((s, x) => s + x.horasTotales, 0),
+      // Lo que espera una decisión del administrador: es el número por el
+      // que entra al panel, más que el total histórico.
+      porRevisar: asignaciones.filter(
+        (a) => a.estado === "enviada" || a.estado === "en_revision"
+      ).length,
     };
   }, [asignaciones, config]);
 
@@ -91,10 +95,10 @@ export default function PanelAdmin() {
           icono={<FiClock className="h-6 w-6" aria-hidden />}
         />
         <TarjetaStat
-          etiqueta="Roles configurados"
-          valor={roles.length}
-          tono="lima"
-          icono={<FiSliders className="h-6 w-6" aria-hidden />}
+          etiqueta="Por revisar"
+          valor={totales.porRevisar}
+          tono={totales.porRevisar > 0 ? "ambar" : "lima"}
+          icono={<FiFileText className="h-6 w-6" aria-hidden />}
         />
       </section>
 

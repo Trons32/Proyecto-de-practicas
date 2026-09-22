@@ -7,6 +7,7 @@ import { legible } from "@/lib/resumen";
 import type { TipoRol } from "@/lib/catalogos";
 import Encabezado from "@/components/Encabezado";
 import ModalConfirmacion from "@/components/ModalConfirmacion";
+import ImpactoParametros from "@/components/ImpactoParametros";
 import { Boton, Campo, Entrada, Insignia } from "@/components/ui";
 import { sileo } from "@/lib/toast";
 import { FiPlus, FiTrash2, FiRefreshCw, FiArrowLeft, FiSearch } from "@/components/iconos";
@@ -123,6 +124,10 @@ export default function Parametros() {
           <FiRefreshCw aria-hidden /> Restaurar valores oficiales
         </Boton>
       </Encabezado>
+
+      {/* Va antes que los controles: el administrador debe ver el efecto de
+          lo que ya cambió antes de seguir cambiando. */}
+      <ImpactoParametros />
 
       {/* ---------------- Dedicaciones ---------------- */}
       <section className="tarjeta tarjeta-sombra mb-6 overflow-hidden">

@@ -3,10 +3,10 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
-import { resumirAsignacion, desde, legible } from "@/lib/resumen";
+import { resumirAsignacion, separarEnProgreso, desde, legible } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import Encabezado from "@/components/Encabezado";
-import { Boton, TarjetaStat, Insignia } from "@/components/ui";
+import { Boton, TarjetaStat, Insignia, InsigniaEstado } from "@/components/ui";
 import {
   FiPlus,
   FiUsers,
@@ -25,20 +25,14 @@ export default function Inicio() {
 
   const { enProgreso, historico, global } = useMemo(() => {
     const conResumen = asignaciones.map((a) => ({ a, r: resumirAsignacion(a, config) }));
-    // La más recientemente editada de las que siguen abiertas es la que
-    // el coordinador quiere continuar.
-    const borradores = conResumen
-      .filter(({ a }) => a.estado === "borrador")
-      .sort((x, y) => y.a.actualizada.localeCompare(x.a.actualizada));
-
-    const enProgreso = borradores[0] ?? null;
-    const historico = conResumen
-      .filter(({ a }) => a.id !== enProgreso?.a.id)
-      .sort((x, y) => y.a.actualizada.localeCompare(x.a.actualizada));
+    // La regla de qué es "la actual" vive en lib/resumen: el listado de
+    // asignaciones usa esa misma, para que no puedan contradecirse.
+    const partes = separarEnProgreso(asignaciones);
+    const porId = new Map(conResumen.map((f) => [f.a.id, f]));
 
     return {
-      enProgreso,
-      historico,
+      enProgreso: partes.enProgreso ? porId.get(partes.enProgreso.id)! : null,
+      historico: partes.historico.map((a) => porId.get(a.id)!),
       global: {
         asignaciones: conResumen.length,
         docentes: conResumen.reduce((s, { r }) => s + r.totalDocentes, 0),
@@ -119,7 +113,7 @@ export default function Inicio() {
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Insignia tono="verde">Periodo {enProgreso.a.periodo}</Insignia>
-                <Insignia tono="ambar">Borrador</Insignia>
+                <InsigniaEstado estado={enProgreso.a.estado} />
                 {enProgreso.r.totalErrores > 0 ? (
                   <Insignia tono="rojo">
                     <FiAlertCircle aria-hidden /> {enProgreso.r.totalErrores}{" "}
@@ -217,9 +211,7 @@ export default function Inicio() {
                   </span>
                   <span className="flex shrink-0 flex-wrap items-center gap-2">
                     <Insignia>{a.periodo}</Insignia>
-                    <Insignia tono={a.estado === "completada" ? "verde" : "ambar"}>
-                      {a.estado === "completada" ? "Completada" : "Borrador"}
-                    </Insignia>
+                    <InsigniaEstado estado={a.estado} />
                     <span className="text-xs tabular-nums text-[var(--color-texto-suave)]">
                       {r.totalDocentes} doc · {r.horasTotales} h
                     </span>

@@ -1,6 +1,8 @@
 "use client";
 
 import { ReactNode, SelectHTMLAttributes, InputHTMLAttributes, ButtonHTMLAttributes } from "react";
+import { FiChevronLeft, FiChevronRight } from "./iconos";
+import { ETIQUETA_ESTADO, type EstadoAsignacion } from "@/lib/tipos";
 
 export function Campo({
   etiqueta,
@@ -196,6 +198,92 @@ export function TarjetaStat({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * El estado de una asignación, siempre con el mismo color y la misma
+ * palabra. Vive aquí porque lo pintan cinco pantallas y, si cada una
+ * eligiera su tono, el mismo estado se vería distinto según dónde se mire.
+ */
+export function InsigniaEstado({ estado }: { estado: EstadoAsignacion }) {
+  const tono = {
+    borrador: "neutro",
+    enviada: "azul",
+    en_revision: "azul",
+    aprobada: "verde",
+    en_correccion: "ambar",
+  }[estado] as "neutro" | "azul" | "verde" | "ambar";
+
+  return <Insignia tono={tono}>{ETIQUETA_ESTADO[estado]}</Insignia>;
+}
+
+/**
+ * Paginación de listados largos.
+ *
+ * Con una sola página no se pinta nada: unos controles que no llevan a
+ * ningún sitio solo ensucian. El rango visible se enuncia en palabras
+ * ("11–20 de 34") porque en el histórico lo que el coordinador quiere
+ * saber es cuánto le falta por revisar, no en qué número de página está.
+ */
+export function Paginacion({
+  pagina,
+  paginas,
+  total,
+  porPagina,
+  onCambiar,
+  etiqueta = "elementos",
+}: {
+  pagina: number;
+  paginas: number;
+  total: number;
+  porPagina: number;
+  onCambiar: (pagina: number) => void;
+  etiqueta?: string;
+}) {
+  if (paginas <= 1) return null;
+
+  const primero = (pagina - 1) * porPagina + 1;
+  const ultimo = Math.min(pagina * porPagina, total);
+
+  return (
+    <nav
+      aria-label={`Paginación de ${etiqueta}`}
+      className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-borde)] px-5 py-3"
+    >
+      <p className="text-xs text-[var(--color-texto-suave)]">
+        <span className="tabular-nums">
+          {primero}–{ultimo}
+        </span>{" "}
+        de <span className="tabular-nums">{total}</span> {etiqueta}
+      </p>
+
+      <div className="flex items-center gap-1">
+        <Boton
+          variante="secundario"
+          className="px-2"
+          disabled={pagina <= 1}
+          aria-label="Página anterior"
+          onClick={() => onCambiar(pagina - 1)}
+        >
+          <FiChevronLeft aria-hidden />
+        </Boton>
+
+        <span className="px-2 text-xs font-semibold tabular-nums text-[var(--color-texto-suave)]">
+          {pagina} / {paginas}
+        </span>
+
+        <Boton
+          variante="secundario"
+          className="px-2"
+          disabled={pagina >= paginas}
+          aria-label="Página siguiente"
+          onClick={() => onCambiar(pagina + 1)}
+        >
+          <FiChevronRight aria-hidden />
+        </Boton>
+      </div>
+    </nav>
   );
 }
 

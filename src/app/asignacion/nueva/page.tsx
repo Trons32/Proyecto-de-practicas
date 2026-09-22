@@ -4,21 +4,33 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FACULTADES, PROGRAMAS } from "@/lib/catalogos";
-import { periodosAcademicos } from "@/lib/tipos";
+import { periodosAsignables } from "@/lib/tipos";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
+import { useSesionStore } from "@/lib/stores/sesion-store";
 import Encabezado from "@/components/Encabezado";
 import { Boton, Campo, Seleccion } from "@/components/ui";
 import { sileo } from "@/lib/toast";
 import { FiArrowLeft, FiArrowRight } from "@/components/iconos";
 
-const PERIODOS = periodosAcademicos();
+/**
+ * Solo el periodo en curso y el siguiente: aquí se crea, no se consulta el
+ * histórico. Se etiquetan para que el coordinador no tenga que calcular
+ * mentalmente en cuál de los dos está parado.
+ */
+const [PERIODO_ACTUAL, PERIODO_SIGUIENTE] = periodosAsignables();
+
+const PERIODOS = [
+  { valor: PERIODO_ACTUAL, texto: `${PERIODO_ACTUAL} · actual` },
+  { valor: PERIODO_SIGUIENTE, texto: `${PERIODO_SIGUIENTE} · siguiente` },
+];
 
 export default function NuevaAsignacion() {
   const router = useRouter();
   const crearAsignacion = useAsignacionStore((s) => s.crearAsignacion);
   const asignaciones = useAsignacionStore((s) => s.asignaciones);
+  const usuario = useSesionStore((s) => s.sesion?.usuario ?? null);
 
-  const [periodo, setPeriodo] = useState(PERIODOS[0] ?? "");
+  const [periodo, setPeriodo] = useState(PERIODO_ACTUAL);
   const [facultad, setFacultad] = useState("");
   const [programa, setPrograma] = useState("");
 
@@ -51,7 +63,10 @@ export default function NuevaAsignacion() {
       return;
     }
 
-    const id = crearAsignacion({ periodo, facultad, programa });
+    const id = crearAsignacion(
+      { periodo, facultad, programa },
+      usuario ? { nombres: usuario.nombres, rol: usuario.rol } : undefined
+    );
     sileo.success({
       title: "Asignación creada",
       description: `${programa} · ${periodo}`,
