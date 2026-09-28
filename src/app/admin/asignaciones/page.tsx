@@ -358,7 +358,7 @@ function Convocatorias({
   return (
     <>
       <section className="mb-6 grid gap-4 md:grid-cols-2">
-        {periodos.map((periodo) => {
+        {periodos.map((periodo, i) => {
           const c = convocatorias[periodo] ?? null;
           const estado = estadoConvocatoria(c);
 
@@ -366,8 +366,14 @@ function Convocatorias({
             <div key={periodo} className="tarjeta p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
+                  {/* periodosAsignables() devuelve [actual, siguiente]: el
+                      administrador piensa en "este" y "el que viene", y el
+                      código queda a la vista como referencia. */}
                   <h3 className="text-sm font-bold text-[var(--color-texto)]">
-                    Periodo {periodo}
+                    {i === 0 ? "Periodo actual" : "Próximo periodo"}
+                    <span className="ms-2 text-xs font-medium text-[var(--color-texto-suave)]">
+                      {periodo}
+                    </span>
                   </h3>
                   {c ? (
                     <p className="mt-1 text-xs text-[var(--color-texto-suave)]">

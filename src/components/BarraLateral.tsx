@@ -22,7 +22,17 @@ import { ETIQUETA_ROL, type Rol } from "@/lib/auth/sesion";
  * "Asignación" queda habilitado; el resto se muestra atenuado para
  * conservar la estructura del dashboard institucional.
  */
-type Enlace = { icono: IconType; texto: string; href?: string };
+type Enlace = {
+  icono: IconType;
+  texto: string;
+  href?: string;
+  /**
+   * Otras rutas que pertenecen al mismo módulo. El administrador revisa una
+   * asignación en /asignacion/[id], fuera de /admin, y sin esto el menú no
+   * sabría a qué módulo pertenece esa pantalla.
+   */
+  tambien?: string[];
+};
 
 /** El menú depende del rol: cada uno ve solo sus módulos. */
 const MENU: Record<Rol, Enlace[]> = {
@@ -35,7 +45,12 @@ const MENU: Record<Rol, Enlace[]> = {
   ADMIN: [
     { icono: FiGrid, texto: "Panel", href: "/admin" },
     { icono: FiSliders, texto: "Parámetros", href: "/admin/parametros" },
-    { icono: FiFileText, texto: "Asignaciones" },
+    {
+      icono: FiFileText,
+      texto: "Asignaciones",
+      href: "/admin/asignaciones",
+      tambien: ["/asignacion"],
+    },
     { icono: FiBarChart2, texto: "Reportes" },
     { icono: FiUsers, texto: "Usuarios" },
   ],
@@ -56,15 +71,15 @@ export default function BarraLateral() {
    * /admin/parametros, "Panel" (/admin) y "Parámetros" son ambos prefijos
    * de la ruta, y marcar los dos dejaba dos ítems resaltados a la vez.
    */
-  const hrefActivo = useMemo(
-    () =>
-      MENU[rol]
-        .map((e) => e.href)
-        .filter((h): h is string => Boolean(h))
-        .filter((h) => (h === "/" ? ruta === "/" : ruta === h || ruta.startsWith(h + "/")))
-        .sort((a, b) => b.length - a.length)[0],
-    [rol, ruta]
-  );
+  const hrefActivo = useMemo(() => {
+    const casa = (h: string) =>
+      h === "/" ? ruta === "/" : ruta === h || ruta.startsWith(h + "/");
+    return MENU[rol]
+      .flatMap((e) =>
+        e.href ? [e.href, ...(e.tambien ?? [])].filter(casa).map((r) => ({ href: e.href, r })) : []
+      )
+      .sort((a, b) => b.r.length - a.r.length)[0]?.href;
+  }, [rol, ruta]);
 
   const cerrarSesion = () => {
     cerrar();
@@ -115,7 +130,10 @@ export default function BarraLateral() {
         {/* Menú */}
         <nav className="flex-1 space-y-2 overflow-y-auto p-4">
           {ENLACES.map(({ icono: Icono, texto, href }) => {
-            const activo = href === hrefActivo;
+            // Sin el `Boolean(href)`, en una ruta que no casa con ningún enlace
+            // hrefActivo es undefined y todos los módulos inertes (sin href)
+            // se marcaban activos a la vez.
+            const activo = Boolean(href) && href === hrefActivo;
             const clases = `block rounded-lg px-4 py-3 text-sm font-medium transition ${
               activo
                 ? "bg-cecar-600 text-white"
