@@ -1,16 +1,34 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useConfigStore } from "@/lib/stores/config-store";
+import { useConfigStore, valoresOficiales } from "@/lib/stores/config-store";
+import { useAsignacionStore } from "@/lib/stores/asignacion-store";
+import { useNovedadesStore } from "@/lib/stores/novedades-store";
+import { useSesionStore } from "@/lib/stores/sesion-store";
 import { legible } from "@/lib/resumen";
-import type { TipoRol } from "@/lib/catalogos";
+import type { ReglaDedicacion, TipoRol } from "@/lib/catalogos";
+import {
+  diferenciasParametros,
+  fotoDeImpacto,
+  type CambioParametro,
+  type Limites,
+  type Parametros,
+} from "@/lib/novedades";
 import Encabezado from "@/components/Encabezado";
-import ModalConfirmacion from "@/components/ModalConfirmacion";
 import ImpactoParametros from "@/components/ImpactoParametros";
+import Modal from "@/components/Modal";
 import { Boton, Campo, Entrada, Insignia } from "@/components/ui";
 import { sileo } from "@/lib/toast";
-import { FiPlus, FiTrash2, FiRefreshCw, FiArrowLeft, FiSearch } from "@/components/iconos";
+import {
+  FiPlus,
+  FiTrash2,
+  FiRefreshCw,
+  FiArrowLeft,
+  FiArrowRight,
+  FiSearch,
+  FiAlertTriangle,
+} from "@/components/iconos";
 
 const TIPOS: { valor: TipoRol; texto: string }[] = [
   { valor: "DOCENCIA", texto: "Docencia" },
@@ -32,24 +50,61 @@ const COLUMNAS = [
   { clave: "comunidades", etiqueta: "Comunidades" },
 ] as const;
 
-export default function Parametros() {
-  const reglas = useConfigStore((s) => s.reglas);
-  const roles = useConfigStore((s) => s.roles);
-  const limites = useConfigStore((s) => s.limites);
-  const hidratado = useConfigStore((s) => s.hidratado);
+/** Copia profunda: el borrador no debe compartir objetos con el store. */
+const clonar = (p: Parametros): Parametros => ({
+  reglas: Object.fromEntries(Object.entries(p.reglas).map(([k, v]) => [k, { ...v }])),
+  roles: p.roles.map((r) => ({ ...r })),
+  limites: { ...p.limites },
+});
 
-  const actualizarRegla = useConfigStore((s) => s.actualizarRegla);
-  const actualizarLimites = useConfigStore((s) => s.actualizarLimites);
-  const agregarRol = useConfigStore((s) => s.agregarRol);
-  const actualizarRol = useConfigStore((s) => s.actualizarRol);
-  const eliminarRol = useConfigStore((s) => s.eliminarRol);
-  const restaurar = useConfigStore((s) => s.restaurarValoresOficiales);
+export default function PaginaParametros() {
+  const hidratado = useConfigStore((s) => s.hidratado);
+  const novedadesHidratadas = useNovedadesStore((s) => s.hidratado);
+
+  if (!hidratado || !novedadesHidratadas) {
+    return (
+      <main className="px-4 py-6 sm:p-8">
+        <Encabezado titulo="Parámetros" descripcion="Cargando…" />
+      </main>
+    );
+  }
+
+  // El borrador se siembra con los valores ya rehidratados: montarlo antes
+  // lo llenaría con los del formato y los mostraría como cambios.
+  return <EditorParametros />;
+}
+
+/**
+ * Los cambios se preparan en un borrador y se aplican juntos, con un
+ * motivo. Aplicarlos al teclear no dejaba un momento que registrar: cada
+ * pulsación era un cambio de parámetros sin autor ni razón.
+ */
+function EditorParametros() {
+  const reglasVigentes = useConfigStore((s) => s.reglas);
+  const rolesVigentes = useConfigStore((s) => s.roles);
+  const limitesVigentes = useConfigStore((s) => s.limites);
+  const vigentes = useMemo<Parametros>(
+    () => ({ reglas: reglasVigentes, roles: rolesVigentes, limites: limitesVigentes }),
+    [reglasVigentes, rolesVigentes, limitesVigentes]
+  );
+
+  const [borrador, setBorrador] = useState<Parametros>(() => clonar(vigentes));
+  const { reglas, roles, limites } = borrador;
+
+  const cambios = useMemo(() => diferenciasParametros(vigentes, borrador), [vigentes, borrador]);
 
   const [busqueda, setBusqueda] = useState("");
   const [nuevoRol, setNuevoRol] = useState("");
   const [nuevoTipo, setNuevoTipo] = useState<TipoRol>("DOCENCIA");
-  const [porEliminar, setPorEliminar] = useState<number | null>(null);
-  const [confirmarRestaurar, setConfirmarRestaurar] = useState(false);
+  const [revisando, setRevisando] = useState(false);
+
+  // Salir con cambios sin aplicar los perdería sin aviso.
+  useEffect(() => {
+    if (cambios.length === 0) return;
+    const avisar = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", avisar);
+    return () => window.removeEventListener("beforeunload", avisar);
+  }, [cambios.length]);
 
   const rolesFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -65,13 +120,23 @@ export default function Parametros() {
     [roles]
   );
 
-  if (!hidratado) {
-    return (
-      <main className="px-4 py-6 sm:p-8">
-        <Encabezado titulo="Parámetros" descripcion="Cargando…" />
-      </main>
-    );
-  }
+  const actualizarRegla = (dedicacion: string, cambio: Partial<ReglaDedicacion>) =>
+    setBorrador((b) => ({
+      ...b,
+      reglas: { ...b.reglas, [dedicacion]: { ...b.reglas[dedicacion], ...cambio } },
+    }));
+
+  const actualizarLimites = (cambio: Partial<Limites>) =>
+    setBorrador((b) => ({ ...b, limites: { ...b.limites, ...cambio } }));
+
+  const actualizarRol = (id: number, cambio: Partial<{ nombre: string; tipo: TipoRol }>) =>
+    setBorrador((b) => ({
+      ...b,
+      roles: b.roles.map((r) => (r.id === id ? { ...r, ...cambio } : r)),
+    }));
+
+  const eliminarRol = (id: number) =>
+    setBorrador((b) => ({ ...b, roles: b.roles.filter((r) => r.id !== id) }));
 
   const crearRol = () => {
     const nombre = nuevoRol.trim().toUpperCase();
@@ -83,27 +148,42 @@ export default function Parametros() {
       sileo.error({ title: "Ese rol ya existe", description: nombre });
       return;
     }
-    agregarRol(nombre, nuevoTipo);
+    setBorrador((b) => ({
+      ...b,
+      // El id sigue al mayor, vigente o en borrador: los roles del formato
+      // ocupan 1..56 y un id reutilizado heredaría las horas de otro rol.
+      roles: [
+        ...b.roles,
+        {
+          id: Math.max(0, ...b.roles.map((r) => r.id), ...vigentes.roles.map((r) => r.id)) + 1,
+          nombre,
+          tipo: nuevoTipo,
+        },
+      ],
+    }));
     setNuevoRol("");
-    sileo.success({ title: "Rol agregado", description: nombre });
   };
 
-  const confirmarEliminarRol = () => {
-    if (porEliminar === null) return;
-    const eliminado = eliminarRol(porEliminar);
-    setPorEliminar(null);
-    if (eliminado) {
-      sileo.success({ title: "Rol eliminado", description: eliminado.nombre });
-    }
-  };
-
-  const aplicarRestauracion = () => {
-    restaurar();
-    setConfirmarRestaurar(false);
+  const restaurar = () => {
+    setBorrador(valoresOficiales());
     sileo.success({
-      title: "Valores restaurados",
-      description: "Se recuperaron los parámetros del formato oficial.",
+      title: "Valores oficiales cargados",
+      description: "Revise los cambios y aplíquelos para que surtan efecto.",
     });
+  };
+
+  const revisar = () => {
+    const nombres = roles.map((r) => r.nombre.trim());
+    if (nombres.some((n) => !n)) {
+      sileo.error({ title: "Hay un rol sin nombre" });
+      return;
+    }
+    const repetido = nombres.find((n, i) => nombres.indexOf(n) !== i);
+    if (repetido) {
+      sileo.error({ title: "Hay un rol repetido", description: repetido });
+      return;
+    }
+    setRevisando(true);
   };
 
   return (
@@ -120,7 +200,10 @@ export default function Parametros() {
           </Link>
         }
       >
-        <Boton variante="secundario" onClick={() => setConfirmarRestaurar(true)}>
+        <Link href="/admin/novedades">
+          <Boton variante="secundario">Ver novedades</Boton>
+        </Link>
+        <Boton variante="secundario" onClick={restaurar}>
           <FiRefreshCw aria-hidden /> Restaurar valores oficiales
         </Boton>
       </Encabezado>
@@ -328,9 +411,11 @@ export default function Parametros() {
                     </option>
                   ))}
                 </select>
+                {/* Sin confirmación: la baja queda en el borrador y se
+                    descarta o se revisa antes de aplicarla. */}
                 <button
                   type="button"
-                  onClick={() => setPorEliminar(r.id)}
+                  onClick={() => eliminarRol(r.id)}
                   aria-label={`Eliminar ${r.nombre}`}
                   title="Eliminar rol"
                   className="shrink-0 rounded-lg p-2 text-[var(--color-texto-suave)] transition
@@ -345,27 +430,162 @@ export default function Parametros() {
         )}
       </section>
 
-      <ModalConfirmacion
-        abierto={porEliminar !== null}
-        onCerrar={() => setPorEliminar(null)}
-        onConfirmar={confirmarEliminarRol}
-        titulo="Eliminar rol"
-        mensaje="Las asignaciones que ya usaban este rol dejarán de sumar sus horas."
-        detalle={roles.find((r) => r.id === porEliminar)?.nombre}
-        etiquetaConfirmar="Eliminar"
-        peligro
-      />
+      {cambios.length > 0 && (
+        <div
+          role="status"
+          className="tarjeta tarjeta-sombra sticky bottom-4 z-10 mt-6 flex flex-wrap items-center justify-between gap-3 border-amber-300 px-5 py-3"
+        >
+          <p className="text-sm font-semibold text-[var(--color-texto)]">
+            {cambios.length === 1 ? "1 cambio sin aplicar" : `${cambios.length} cambios sin aplicar`}
+          </p>
+          <div className="flex gap-2">
+            <Boton variante="secundario" onClick={() => setBorrador(clonar(vigentes))}>
+              Descartar
+            </Boton>
+            <Boton onClick={revisar}>
+              <FiArrowRight aria-hidden /> Revisar y aplicar
+            </Boton>
+          </div>
+        </div>
+      )}
 
-      <ModalConfirmacion
-        abierto={confirmarRestaurar}
-        onCerrar={() => setConfirmarRestaurar(false)}
-        onConfirmar={aplicarRestauracion}
-        titulo="Restaurar valores oficiales"
-        mensaje="Se perderán todos los cambios de parámetros y roles."
-        detalle="Volverán las reglas, límites y los 56 roles del formato oficial."
-        etiquetaConfirmar="Restaurar"
-        peligro
+      <ModalAplicar
+        abierto={revisando}
+        onCerrar={() => setRevisando(false)}
+        cambios={cambios}
+        vigentes={vigentes}
+        borrador={borrador}
       />
     </main>
+  );
+}
+
+/** El resumen del cambio, su impacto previsto y el motivo obligatorio. */
+function ModalAplicar({
+  abierto,
+  onCerrar,
+  cambios,
+  vigentes,
+  borrador,
+}: {
+  abierto: boolean;
+  onCerrar: () => void;
+  cambios: CambioParametro[];
+  vigentes: Parametros;
+  borrador: Parametros;
+}) {
+  const asignaciones = useAsignacionStore((s) => s.asignaciones);
+  const usuario = useSesionStore((s) => s.sesion?.usuario ?? null);
+  const aplicarParametros = useNovedadesStore((s) => s.aplicarParametros);
+  const [motivo, setMotivo] = useState("");
+
+  // La misma foto que guardará la novedad: el administrador ve a quién
+  // afecta antes de confirmar, no después.
+  const afectadas = useMemo(
+    () =>
+      abierto
+        ? fotoDeImpacto(
+            asignaciones,
+            { roles: borrador.roles, reglas: borrador.reglas },
+            { roles: vigentes.roles, reglas: vigentes.reglas }
+          )
+        : [],
+    [abierto, asignaciones, borrador, vigentes]
+  );
+
+  const eliminaRoles = cambios.some((c) => c.ambito === "rol" && c.despues === null);
+
+  const cerrar = () => {
+    setMotivo("");
+    onCerrar();
+  };
+
+  const confirmar = () => {
+    if (!motivo.trim()) {
+      sileo.error({
+        title: "Falta el motivo",
+        description: "Quedará registrado en la novedad junto con los cambios.",
+      });
+      return;
+    }
+    if (!usuario) return;
+    const novedad = aplicarParametros(borrador, motivo, {
+      nombres: usuario.nombres,
+      rol: usuario.rol,
+    });
+    cerrar();
+    if (novedad) {
+      sileo.success({
+        title: `Cambios aplicados · novedad N.º ${novedad.numero}`,
+        description:
+          novedad.afectadas.length === 0
+            ? "Ninguna asignación aprobada quedó afectada."
+            : novedad.afectadas.length === 1
+              ? "1 asignación aprobada quedó afectada."
+              : `${novedad.afectadas.length} asignaciones aprobadas quedaron afectadas.`,
+      });
+    }
+  };
+
+  return (
+    <Modal abierto={abierto} onCerrar={cerrar} titulo="Aplicar cambios de parámetros" tamano="lg">
+      <ul className="mb-4 max-h-64 divide-y divide-[var(--color-borde)] overflow-y-auto rounded-lg border border-[var(--color-borde)]">
+        {cambios.map((c, i) => (
+          <li key={i} className="px-3 py-2 text-sm">
+            <p className="font-medium text-[var(--color-texto)]">{c.parametro}</p>
+            <p className="text-xs text-[var(--color-texto-suave)]">
+              <span className={c.antes === null ? "italic" : "line-through"}>
+                {c.antes ?? "no existía"}
+              </span>
+              {" → "}
+              <span className="font-semibold text-[var(--color-texto)]">
+                {c.despues ?? "eliminado"}
+              </span>
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      {afectadas.length > 0 ? (
+        <p className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            {afectadas.length === 1
+              ? "1 asignación aprobada dejará de cumplir las reglas."
+              : `${afectadas.length} asignaciones aprobadas dejarán de cumplir las reglas.`}{" "}
+            No se reabrirán solas: podrá decidir sobre cada una en la novedad.
+          </span>
+        </p>
+      ) : (
+        <p className="mb-4 rounded-lg bg-[var(--color-superficie)] px-3 py-2 text-sm text-[var(--color-texto-suave)]">
+          Ninguna asignación aprobada deja de cumplir las reglas con este cambio.
+        </p>
+      )}
+
+      {eliminaRoles && (
+        <p className="mb-4 text-xs text-[var(--color-texto-suave)]">
+          Las asignaciones que usaban un rol eliminado dejarán de sumar sus horas.
+        </p>
+      )}
+
+      <Campo etiqueta="Motivo" requerido ayuda="Queda registrado en la novedad y no se puede editar.">
+        <textarea
+          className="campo min-h-24 resize-y"
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          placeholder="Ej.: Rectoría redujo la carga de tiempo completo a 38 h desde 2026-2."
+          data-foco-inicial
+        />
+      </Campo>
+
+      <div className="mt-6 flex gap-3">
+        <Boton variante="secundario" className="flex-1" onClick={cerrar}>
+          Cancelar
+        </Boton>
+        <Boton className="flex-1" onClick={confirmar}>
+          Aplicar y registrar
+        </Boton>
+      </div>
+    </Modal>
   );
 }

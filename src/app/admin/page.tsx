@@ -15,6 +15,8 @@ import {
   FiFileText,
   FiBarChart2,
   FiArrowRight,
+  FiBell,
+  FiDatabase,
 } from "@/components/iconos";
 
 /** Módulos del administrador; los que aún no existen se marcan como tales. */
@@ -31,6 +33,18 @@ const MODULOS = [
     titulo: "Asignaciones",
     texto: "Revisar, aprobar y devolver las asignaciones que suben los coordinadores.",
     href: "/admin/asignaciones",
+  },
+  {
+    icono: FiBell,
+    titulo: "Novedades",
+    texto: "Quién cambió qué parámetro, cuándo y por qué, y a qué asignaciones aprobadas afectó.",
+    href: "/admin/novedades",
+  },
+  {
+    icono: FiDatabase,
+    titulo: "Respaldo de datos",
+    texto: "Exportar e importar todo lo registrado. Es también el puente para migrar a la base de datos.",
+    href: "/admin/datos",
   },
   {
     icono: FiBarChart2,

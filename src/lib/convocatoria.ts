@@ -86,6 +86,12 @@ export const fechaLegible = (iso: string): string =>
     year: "numeric",
   });
 
+/** Fecha y hora, para registros donde importa el orden de lo ocurrido. */
+export const fechaHoraLegible = (iso: string): string => {
+  const hora = new Date(iso).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  return `${fechaLegible(iso)}, ${hora}`;
+};
+
 /**
  * Cuándo conviene avisar de que el plazo aprieta. Tres días es el margen
  * con el que todavía se alcanza a corregir una asignación completa.

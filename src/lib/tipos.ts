@@ -118,6 +118,11 @@ export interface Evento {
   plazo?: string;
   /** Número de envío al que corresponde el evento. */
   version?: number;
+  /**
+   * La novedad que motivó una reapertura por parámetros. Opcional y nuevo:
+   * lo guardado antes no lo trae y sigue siendo válido tal cual.
+   */
+  novedadId?: string;
 }
 
 export interface Asignacion {

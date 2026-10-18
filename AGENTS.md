@@ -58,8 +58,14 @@ No hay base de datos, ni API, ni server actions. Cada página empieza con
 ```
 lib/stores/asignacion-store.ts   las asignaciones   → localStorage (persist)
 lib/stores/config-store.ts       la parametrización → localStorage (persist)
+lib/stores/novedades-store.ts    las novedades      → localStorage (persist)
 lib/stores/sesion-store.ts       la sesión          → local o session, a mano
 ```
+
+Los tres primeros no tocan localStorage: persisten por `almacenamiento()` de
+`lib/datos/almacen.ts`, el único punto a cambiar para pasar a SQL. No
+añadas otro `localStorage` suelto ni cambies las claves de `CLAVES`: los
+datos guardados quedarían huérfanos.
 
 ---
 
@@ -162,7 +168,20 @@ panel de `/admin/parametros` deja que el administrador elija a cuáles pedir
 corrección. **Nada se reabre solo**: un cambio puede ser a futuro y no deber
 tocar lo ya cerrado; esa decisión es suya.
 
-### 7. Crear una asignación no es lo mismo que consultarla
+### 7. Los parámetros solo cambian con una novedad
+
+`/admin/parametros` edita un **borrador**; nada se aplica al teclear. Al
+aplicar, `aplicarParametros` del store de novedades cambia la configuración
+**y** registra la novedad (autor, motivo, antes → después, foto de las
+aprobadas afectadas) en una sola operación. `config-store` ya no expone
+acciones sueltas por campo: `reemplazarParametros` existe solo para que lo
+llame ese store. No lo uses desde una vista, o el cambio queda sin rastro.
+
+Igual con las reaperturas por parámetros: pasa por `solicitarCorreccion` del
+store de novedades, que llama a `reabrirVarias` y deja la decisión en la
+novedad. Las novedades, como la bitácora, solo se añaden.
+
+### 8. Crear una asignación no es lo mismo que consultarla
 
 Son dos actos distintos y la interfaz los separa:
 
@@ -181,7 +200,7 @@ la actual. Si cambias el criterio, cámbialo ahí.
 El semestre en curso se parte por mitad de año: enero–junio es el 1, julio–
 diciembre el 2 (`periodoActual()`).
 
-### 8. El motor de cálculo es puro, a propósito
+### 9. El motor de cálculo es puro, a propósito
 
 `calcularTotales(docente, config)` recibe la configuración **como argumento** en
 vez de leer el store, para poder verificarse fuera de React. No le metas un
@@ -202,6 +221,8 @@ app/asignacion/[id]/docente/[docenteId]   la ficha: cursos, descargas, horas
 app/admin                        panel del administrador
 app/admin/parametros             roles, reglas y límites en runtime
 app/admin/asignaciones           bandejas: aprobar, devolver, abrir convocatorias
+app/admin/novedades              cambios de parámetros y a quién afectaron
+app/admin/datos                  respaldo: exportar e importar todo en JSON
 
 lib/catalogos.ts     datos del formato oficial ← NO EDITAR A MANO
 lib/calculo.ts       motor de cálculo y validaciones ← PURO
@@ -209,8 +230,15 @@ lib/tipos.ts         modelo de dominio, ciclo de vida y constructores
 lib/convocatoria.ts  plazos de entrega y su vencimiento
 lib/usar-plazo.ts    qué plazo rige y si se puede enviar (hook usePlazo)
 lib/impacto.ts       qué aprobadas rompe un cambio de parámetros
+lib/novedades.ts     diferencias de parámetros y foto de impacto ← PURO
 lib/resumen.ts       totales por asignación y separarEnProgreso()
 lib/verificar.ts     prueba contra los 45 docentes reales
+lib/verificar-novedades.ts   prueba de la lógica de novedades
+lib/verificar-respaldo.ts    prueba del respaldo JSON
+lib/datos/almacen.ts         dónde persisten los stores ← punto de cambio a SQL
+lib/datos/respaldo.ts        formato y validación del respaldo ← PURO
+db/                  esquema SQL Server, semilla y migración (ver db/README.md)
+specs/               especificaciones (Spec-Driven Development)
 lib/auth/sesion.ts   usuarios de prueba y roles ← único punto a cambiar por la API
 lib/stores/*         estado persistido
 
@@ -242,7 +270,11 @@ components/*         el resto de piezas compartidas
 npx tsc --noEmit                # 0 errores
 npm run lint
 npx tsx src/lib/verificar.ts    # si tocaste cálculo, catálogos o tipos
+npx tsx src/lib/verificar-novedades.ts   # si tocaste lib/novedades.ts
+npx tsx src/lib/verificar-respaldo.ts    # si tocaste lib/datos/ o los tipos
 ```
+
+Una funcionalidad nueva empieza por su `specs/NNN-nombre/spec.md`.
 
 Y pruébalo **con los dos roles** (`admin@cecar.edu.co` / `admin123`,
 `coordinador@cecar.edu.co` / `coord123`): media funcionalidad está detrás de
@@ -256,10 +288,14 @@ Y pruébalo **con los dos roles** (`admin@cecar.edu.co` / `admin123`,
 - Tocar `lib/__fixture.json` para que `verificar.ts` pase.
 - Cambiar la forma del estado persistido sin subir `version` y escribir el
   `migrate` del store: rompe los datos que el usuario ya tiene guardados.
-  (Van por `asignaciones` v3 y `configuracion` v2.)
+  (Van por `asignaciones` v3, `configuracion` v2 y `novedades` v1.)
 - Cambiar el estado de una asignación fuera de las acciones del ciclo de vida,
   o editar la bitácora: deja el expediente mintiendo.
 - Permitir que se edite una asignación ya entregada. Si hace falta reabrirla,
   se reabre por el camino previsto (`reabrirPorParametros`), que deja rastro.
-- Traer un backend, una base de datos o un ORM. Cuando exista la API real, el
-  punto de entrada es `autenticar()` en `lib/auth/sesion.ts`.
+- Traer un backend, una base de datos o un ORM. Cuando exista la API real, los
+  puntos de entrada son `autenticar()` en `lib/auth/sesion.ts` y
+  `almacenamiento()` en `lib/datos/almacen.ts`; el esquema ya está en `db/`.
+- Cambiar la forma de `Asignacion`, `Docente` o `Novedad` sin revisar
+  `db/esquema.sql` y `db/respaldo-a-sql.ts`: la migración dejaría de cuadrar.
+- Si cambia `catalogos.ts`, regenerar la semilla: `npx tsx db/generar-semilla.ts`.

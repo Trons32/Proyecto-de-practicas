@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { almacenamiento, CLAVES } from "@/lib/datos/almacen";
 import {
   Asignacion,
   Docente,
@@ -52,7 +53,13 @@ interface AsignacionStore {
    * Reabre varias de una vez, con el mismo motivo y plazo. Devuelve cuántas
    * se reabrieron: las que ya no estaban aprobadas se ignoran.
    */
-  reabrirVarias: (ids: string[], autor: Autor, nota: string, plazo: string) => number;
+  reabrirVarias: (
+    ids: string[],
+    autor: Autor,
+    nota: string,
+    plazo: string,
+    novedadId?: string
+  ) => number;
 }
 
 /** Selector puro: evita repetir el `find` en cada vista. */
@@ -234,7 +241,7 @@ export const useAsignacionStore = create<AsignacionStore>()(
           );
         },
 
-        reabrirVarias: (ids, autor, nota, plazo) => {
+        reabrirVarias: (ids, autor, nota, plazo, novedadId) => {
           const objetivo = new Set(ids);
           const ahora = new Date().toISOString();
           let reabiertas = 0;
@@ -260,6 +267,7 @@ export const useAsignacionStore = create<AsignacionStore>()(
                     plazo,
                     version: a.version,
                     fecha: ahora,
+                    novedadId,
                   }),
                 ],
               };
@@ -271,7 +279,8 @@ export const useAsignacionStore = create<AsignacionStore>()(
       };
     },
     {
-      name: "cecar-asignacion-academica",
+      name: CLAVES.asignaciones,
+      storage: almacenamiento(),
       // v1 guardaba una sola asignación en la raíz; se descarta al migrar.
       // v3 introdujo el ciclo de aprobación: lo guardado en v2 solo conocía
       // "borrador" y "completada", y no tenía versión ni bitácora.

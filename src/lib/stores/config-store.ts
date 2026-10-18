@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { almacenamiento, CLAVES } from "@/lib/datos/almacen";
 import {
   REGLAS_DEDICACION,
   ROLES,
@@ -10,15 +11,11 @@ import {
   MAX_ADMINISTRATIVAS,
   type ReglaDedicacion,
   type Rol as RolDescarga,
-  type TipoRol,
 } from "@/lib/catalogos";
 import { finDelDia, type Convocatoria } from "@/lib/convocatoria";
+import type { Limites, Parametros } from "@/lib/novedades";
 
-export interface Limites {
-  maxCursos: number;
-  maxDescargas: number;
-  maxAdministrativas: number;
-}
+export type { Limites };
 
 interface ConfigStore {
   /** Topes de horas y horas de apoyo, por dedicación. */
@@ -32,25 +29,23 @@ interface ConfigStore {
 
   setHidratado: (v: boolean) => void;
 
-  actualizarRegla: (dedicacion: string, cambios: Partial<ReglaDedicacion>) => void;
-  actualizarLimites: (cambios: Partial<Limites>) => void;
+  /**
+   * Sustituye reglas, roles y límites de una vez. No se llama desde las
+   * vistas: pasa por `aplicarParametros` del store de novedades, que deja
+   * constancia de quién cambió qué. Antes cada campo se guardaba al teclear
+   * y un 40 → 38 quedaba como 40 → 4 → 38, sin autor ni motivo.
+   */
+  reemplazarParametros: (p: Parametros) => void;
 
   /** Abre el periodo o mueve su fecha límite. `limite` es AAAA-MM-DD. */
   abrirConvocatoria: (periodo: string, limite: string) => void;
   /** Cierra antes de tiempo, o reabre lo cerrado a mano. */
   cerrarConvocatoria: (periodo: string) => void;
   reabrirConvocatoria: (periodo: string) => void;
-
-  agregarRol: (nombre: string, tipo: TipoRol) => void;
-  actualizarRol: (id: number, cambios: Partial<Omit<RolDescarga, "id">>) => void;
-  eliminarRol: (id: number) => RolDescarga | null;
-
-  /** Devuelve todo a los valores del formato oficial. */
-  restaurarValoresOficiales: () => void;
 }
 
 /** Copia profunda de los valores del formato, para no compartir referencias. */
-const valoresOficiales = () => ({
+export const valoresOficiales = (): Parametros => ({
   reglas: Object.fromEntries(
     Object.entries(REGLAS_DEDICACION).map(([k, v]) => [k, { ...v }])
   ),
@@ -64,7 +59,7 @@ const valoresOficiales = () => ({
 
 export const useConfigStore = create<ConfigStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       ...valoresOficiales(),
       // Fuera de valoresOficiales: las convocatorias son del calendario de
       // cada semestre, no del formato, y restaurar los valores oficiales no
@@ -74,15 +69,7 @@ export const useConfigStore = create<ConfigStore>()(
 
       setHidratado: (hidratado) => set({ hidratado }),
 
-      actualizarRegla: (dedicacion, cambios) =>
-        set((s) => ({
-          reglas: {
-            ...s.reglas,
-            [dedicacion]: { ...s.reglas[dedicacion], ...cambios },
-          },
-        })),
-
-      actualizarLimites: (cambios) => set((s) => ({ limites: { ...s.limites, ...cambios } })),
+      reemplazarParametros: ({ reglas, roles, limites }) => set({ reglas, roles, limites }),
 
       abrirConvocatoria: (periodo, limite) =>
         set((s) => {
@@ -125,30 +112,10 @@ export const useConfigStore = create<ConfigStore>()(
               }
             : s
         ),
-
-      agregarRol: (nombre, tipo) =>
-        set((s) => ({
-          // El id sigue al mayor existente: los roles del formato ocupan
-          // 1..56 y los añadidos continúan desde ahí sin colisionar.
-          roles: [...s.roles, { id: Math.max(0, ...s.roles.map((r) => r.id)) + 1, nombre, tipo }],
-        })),
-
-      actualizarRol: (id, cambios) =>
-        set((s) => ({
-          roles: s.roles.map((r) => (r.id === id ? { ...r, ...cambios } : r)),
-        })),
-
-      eliminarRol: (id) => {
-        const eliminado = get().roles.find((r) => r.id === id);
-        if (!eliminado) return null;
-        set((s) => ({ roles: s.roles.filter((r) => r.id !== id) }));
-        return eliminado;
-      },
-
-      restaurarValoresOficiales: () => set({ ...valoresOficiales() }),
     }),
     {
-      name: "cecar-configuracion",
+      name: CLAVES.configuracion,
+      storage: almacenamiento(),
       // v2 añadió las convocatorias. Lo guardado en v1 no las tenía: se
       // completan vacías en vez de descartar la parametrización existente.
       version: 2,

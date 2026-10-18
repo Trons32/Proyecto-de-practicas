@@ -1,4 +1,4 @@
-import { ROLES, REGLAS_DEDICACION, TipoRol, type Rol, type ReglaDedicacion } from "./catalogos";
+import { CONTRATOS, ROLES, REGLAS_DEDICACION, TipoRol, type Rol, type ReglaDedicacion } from "./catalogos";
 import type { Docente } from "./tipos";
 
 /**
@@ -151,6 +151,26 @@ export function validarDocente(d: Docente, t: Totales): Hallazgo[] {
   req(d.dedicacion, "dedicacion", "La dedicación");
   req(d.categoria, "categoria", "La categoría");
   req(d.sede, "sede", "La sede");
+
+  // El formulario ya encadena las listas, pero un dato importado o migrado
+  // no pasa por él. Es el mismo defecto que deja el Excel al cambiar el
+  // contrato sin borrar la categoría: una combinación que el formato no admite.
+  if (d.tipoContrato && d.dedicacion) {
+    const dedicaciones = CONTRATOS[d.tipoContrato];
+    if (dedicaciones && !dedicaciones[d.dedicacion]) {
+      h.push({
+        campo: "dedicacion",
+        mensaje: "La dedicación no corresponde al tipo de contrato.",
+        severidad: "error",
+      });
+    } else if (d.categoria && !dedicaciones?.[d.dedicacion]?.includes(d.categoria)) {
+      h.push({
+        campo: "categoria",
+        mensaje: "La categoría no corresponde a la dedicación.",
+        severidad: "error",
+      });
+    }
+  }
 
   if (d.documento && !/^\d{6,15}$/.test(d.documento.trim())) {
     h.push({

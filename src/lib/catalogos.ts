@@ -113,15 +113,24 @@ export const PROGRAMAS: Programa[] = [
   { nombre: "TRABAJO SOCIAL", facultad: "HUMANIDADES_Y_EDUCACIÓN" },
 ];
 
+/**
+ * Escalafón de planta. En el formato la categoría se valida con
+ * INDIRECT($J9): depende solo de la dedicación, y los rangos con nombre
+ * TIEMPO_COMPLETO (EA9:EA12) y MEDIO_TIEMPO (EA13:EA16) contienen los cuatro
+ * rangos. Leer la tabla de apoyo fila por fila los partía en dos pares y
+ * dejaba fuera combinaciones reales (hay un MEDIO_TIEMPO · ASISTENTE).
+ */
+const ESCALAFON = ["AUXILIAR", "ASISTENTE", "ASOCIADO", "TITULAR"];
+
 /** TIPO DE CONTRATO → DEDICACIÓN → CATEGORÍAS (las listas en cascada INDIRECT) */
 export const CONTRATOS: Record<string, Record<string, string[]>> = {
   "TÉRMINO_FIJO": {
-    "TIEMPO_COMPLETO": ["AUXILIAR", "ASISTENTE"],
-    "MEDIO_TIEMPO": ["ASOCIADO", "TITULAR"],
+    "TIEMPO_COMPLETO": ESCALAFON,
+    "MEDIO_TIEMPO": ESCALAFON,
   },
   "TÉRMINO_INDEFINIDO": {
-    "TIEMPO_COMPLETO": ["AUXILIAR", "ASISTENTE"],
-    "MEDIO_TIEMPO": ["ASOCIADO", "TITULAR"],
+    "TIEMPO_COMPLETO": ESCALAFON,
+    "MEDIO_TIEMPO": ESCALAFON,
   },
   "LABOR_CONTRATADA": {
     "HORA_LABOR": ["CATEGORÍA I", "CATEGORÍA II", "CATEGORÍA III", "CATEGORÍA IV", "CATEGORÍA ÚNICA"],

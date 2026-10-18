@@ -40,4 +40,8 @@ export {
   FiSettings,
   FiSliders,
   FiTag,
+  FiBell,
+  FiDatabase,
+  FiDownload,
+  FiUpload,
 } from "react-icons/fi";

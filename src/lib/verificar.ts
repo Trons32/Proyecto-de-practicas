@@ -10,7 +10,8 @@
  * descuadraban por los roles fuera de rango.
  */
 import fixture from "./__fixture.json";
-import { calcularTotales } from "./calculo";
+import { calcularTotales, validarDocente } from "./calculo";
+import { CONTRATOS } from "./catalogos";
 import { nuevoDocente, nuevoCurso, type Docente } from "./tipos";
 
 type Caso = (typeof fixture.casos)[number];
@@ -70,6 +71,58 @@ for (const c of fixture.casos) {
   }
 
   if ([6, 7, 8, 13, 17, 21].includes(c.n as number)) corregidos++;
+}
+
+// La cascada contrato → dedicación → categoría debe aceptar todas las
+// combinaciones que el formato real registra. Antes MEDIO_TIEMPO · ASISTENTE
+// quedaba fuera porque el catálogo partía el escalafón en dos pares.
+const combinacionesDelFormato: [string, string, string][] = [
+  ["TÉRMINO_INDEFINIDO", "TIEMPO_COMPLETO", "ASISTENTE"],
+  ["TÉRMINO_INDEFINIDO", "TIEMPO_COMPLETO", "AUXILIAR"],
+  ["TÉRMINO_INDEFINIDO", "MEDIO_TIEMPO", "ASISTENTE"],
+  ["TÉRMINO_FIJO", "TIEMPO_COMPLETO", "AUXILIAR"],
+  ["TÉRMINO_FIJO", "TIEMPO_COMPLETO", "ASISTENTE"],
+  ["CÁTEDRAS", "HORA_CÁTEDRA", "CATEGORÍA II"],
+  ["CÁTEDRAS", "HORA_CÁTEDRA", "CATEGORÍA III"],
+];
+for (const [contrato, dedicacion, categoria] of combinacionesDelFormato) {
+  if (!CONTRATOS[contrato]?.[dedicacion]?.includes(categoria)) {
+    fallos++;
+    console.error(`✗ cascada: ${contrato} · ${dedicacion} no ofrece ${categoria}`);
+  }
+}
+for (const contrato of ["TÉRMINO_FIJO", "TÉRMINO_INDEFINIDO"]) {
+  for (const dedicacion of ["TIEMPO_COMPLETO", "MEDIO_TIEMPO"]) {
+    if (CONTRATOS[contrato][dedicacion].length !== 4) {
+      fallos++;
+      console.error(`✗ cascada: ${contrato} · ${dedicacion} debe ofrecer las 4 categorías`);
+    }
+  }
+}
+
+// El motor también rechaza la combinación que Excel deja al cambiar el
+// contrato sin borrar la categoría (la fila 9 del formato: indefinido con
+// CATEGORÍA III). Un dato importado no pasa por el formulario.
+{
+  const invalido: Docente = {
+    ...nuevoDocente(),
+    tipoContrato: "TÉRMINO_INDEFINIDO",
+    dedicacion: "TIEMPO_COMPLETO",
+    categoria: "CATEGORÍA III",
+  };
+  const valido: Docente = { ...invalido, categoria: "TITULAR" };
+  const errorDe = (d: Docente) =>
+    validarDocente(d, calcularTotales(d)).some(
+      (h) => h.campo === "categoria" && h.severidad === "error"
+    );
+  if (!errorDe(invalido)) {
+    fallos++;
+    console.error("✗ cascada: el motor acepta TIEMPO_COMPLETO · CATEGORÍA III");
+  }
+  if (errorDe(valido)) {
+    fallos++;
+    console.error("✗ cascada: el motor rechaza TIEMPO_COMPLETO · TITULAR");
+  }
 }
 
 console.log(`\nDocentes verificados: ${fixture.casos.length}`);

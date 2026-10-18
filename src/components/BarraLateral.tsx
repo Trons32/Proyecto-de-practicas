@@ -12,6 +12,8 @@ import {
   FiLogOut,
   FiMenu,
   FiSliders,
+  FiBell,
+  FiDatabase,
 } from "./iconos";
 import type { IconType } from "react-icons";
 import { useSesionStore } from "@/lib/stores/sesion-store";
@@ -51,6 +53,8 @@ const MENU: Record<Rol, Enlace[]> = {
       href: "/admin/asignaciones",
       tambien: ["/asignacion"],
     },
+    { icono: FiBell, texto: "Novedades", href: "/admin/novedades" },
+    { icono: FiDatabase, texto: "Respaldo", href: "/admin/datos" },
     { icono: FiBarChart2, texto: "Reportes" },
     { icono: FiUsers, texto: "Usuarios" },
   ],

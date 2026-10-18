@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAsignacionStore, type Autor } from "@/lib/stores/asignacion-store";
+import { useNovedadesStore } from "@/lib/stores/novedades-store";
 import { useSesionStore } from "@/lib/stores/sesion-store";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import { asignacionesAfectadas } from "@/lib/impacto";
@@ -32,7 +33,9 @@ import {
 export default function ImpactoParametros() {
   const asignaciones = useAsignacionStore((s) => s.asignaciones);
   const hidratado = useAsignacionStore((s) => s.hidratado);
-  const reabrirVarias = useAsignacionStore((s) => s.reabrirVarias);
+  // Por el store de novedades y no directo: así la reapertura queda como
+  // decisión en la novedad que registró a la asignación como afectada.
+  const solicitarCorreccion = useNovedadesStore((s) => s.solicitarCorreccion);
   const usuario = useSesionStore((s) => s.sesion?.usuario ?? null);
   const config = useConfiguracion();
 
@@ -177,7 +180,7 @@ export default function ImpactoParametros() {
         onConfirmar={(nota, plazo) => {
           if (!usuario) return;
           const autor: Autor = { nombres: usuario.nombres, rol: usuario.rol };
-          const n = reabrirVarias(
+          const n = solicitarCorreccion(
             seleccionadas.map((x) => x.asignacion.id),
             autor,
             nota,
@@ -196,7 +199,7 @@ export default function ImpactoParametros() {
 }
 
 /** Motivo y plazo comunes a todo el lote. */
-function ModalReabrir({
+export function ModalReabrir({
   abierto,
   cantidad,
   onCerrar,

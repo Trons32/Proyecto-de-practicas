@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import type { Evento, TipoEvento } from "@/lib/tipos";
-import { fechaLegible } from "@/lib/convocatoria";
+import { fechaHoraLegible, fechaLegible } from "@/lib/convocatoria";
+import { useNovedadesStore } from "@/lib/stores/novedades-store";
+import { useSesionStore } from "@/lib/stores/sesion-store";
 import { Insignia } from "@/components/ui";
 
 /** Cómo se cuenta cada tipo de evento y con qué color se marca. */
@@ -18,12 +21,6 @@ const EVENTOS: Record<TipoEvento, { texto: string; punto: string }> = {
   },
 };
 
-const momento = (iso: string) => {
-  const d = new Date(iso);
-  const hora = d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
-  return `${fechaLegible(iso)}, ${hora}`;
-};
-
 /**
  * La trazabilidad de la asignación, del primer evento al último.
  *
@@ -34,6 +31,9 @@ const momento = (iso: string) => {
  * buscarla justo cuando más se necesita.
  */
 export default function Bitacora({ eventos }: { eventos: Evento[] }) {
+  const novedades = useNovedadesStore((s) => s.novedades);
+  const esAdmin = useSesionStore((s) => s.sesion?.usuario.rol === "ADMIN");
+
   if (eventos.length === 0) return null;
 
   return (
@@ -61,12 +61,19 @@ export default function Bitacora({ eventos }: { eventos: Evento[] }) {
                   </>
                 )}
               </p>
-              <p className="mt-0.5 text-xs text-[var(--color-texto-suave)]">{momento(e.fecha)}</p>
+              <p className="mt-0.5 text-xs text-[var(--color-texto-suave)]">{fechaHoraLegible(e.fecha)}</p>
 
               {e.nota && (
                 <p className="mt-2 rounded-lg border border-[var(--color-borde)] bg-[var(--color-superficie)] px-3 py-2 text-sm text-[var(--color-texto)]">
                   {e.nota}
                 </p>
+              )}
+
+              {e.novedadId && (
+                <OrigenNovedad
+                  numero={novedades.find((n) => n.id === e.novedadId)?.numero}
+                  href={esAdmin ? `/admin/novedades/${e.novedadId}` : undefined}
+                />
               )}
 
               {e.plazo && (
@@ -79,5 +86,25 @@ export default function Bitacora({ eventos }: { eventos: Evento[] }) {
         );
       })}
     </ol>
+  );
+}
+
+/**
+ * De qué cambio de parámetros salió una reapertura. El coordinador no entra
+ * a la zona de administración: para él es solo un dato, sin enlace.
+ */
+function OrigenNovedad({ numero, href }: { numero?: number; href?: string }) {
+  const texto = numero ? `Novedad N.º ${numero}` : "Novedad de parámetros";
+  return (
+    <p className="mt-1.5 text-xs text-[var(--color-texto-suave)]">
+      Origen:{" "}
+      {href ? (
+        <Link href={href} className="font-semibold text-cecar-700 hover:underline">
+          {texto}
+        </Link>
+      ) : (
+        <span className="font-semibold">{texto}</span>
+      )}
+    </p>
   );
 }
