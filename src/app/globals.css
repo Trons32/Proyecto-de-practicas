@@ -163,6 +163,15 @@ input[type="number"] {
   }
 }
 
+/* Los toasts van siempre por encima de todo. Sileo fija z-index: 50 y el
+   Modal usa 9999, así que un error o una confirmación disparados con un
+   modal abierto quedaban tapados por él. Sileo inyecta su hoja en runtime,
+   sin orden garantizado frente a esta: el `:root` sube la especificidad
+   para ganar sin depender de quién se cargue después. */
+:root [data-sileo-viewport] {
+  z-index: 10000;
+}
+
 /* Fondo del login: foto institucional oscurecida para que la tarjeta
    blanca y el pie en blanco mantengan contraste. */
 .login-fondo {

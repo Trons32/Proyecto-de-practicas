@@ -116,7 +116,9 @@ caso: si un padding no "pega", léelos antes de añadir un `!important`.
 
 `lib/toast.ts` importa la librería de forma diferida y despierta al `Toaster` con
 un evento. Importa siempre desde `@/lib/toast`, no desde `sileo` directamente:
-hacerlo mete la librería al bundle inicial.
+hacerlo mete la librería al bundle inicial. Lo mismo con `exceljs`: solo se
+importa dentro de `cargarExcelJS()` de `lib/exportar-cuadro.ts`, al pedir la
+descarga.
 
 ### 6. Una asignación se aprueba, no se "completa"
 
@@ -223,6 +225,7 @@ app/admin/parametros             roles, reglas y límites en runtime
 app/admin/asignaciones           bandejas: aprobar, devolver, abrir convocatorias
 app/admin/novedades              cambios de parámetros y a quién afectaron
 app/admin/datos                  respaldo: exportar e importar todo en JSON
+app/admin/reportes               reportes; el cuadro resumen del consolidado
 
 lib/catalogos.ts     datos del formato oficial ← NO EDITAR A MANO
 lib/calculo.ts       motor de cálculo y validaciones ← PURO
@@ -232,9 +235,13 @@ lib/usar-plazo.ts    qué plazo rige y si se puede enviar (hook usePlazo)
 lib/impacto.ts       qué aprobadas rompe un cambio de parámetros
 lib/novedades.ts     diferencias de parámetros y foto de impacto ← PURO
 lib/resumen.ts       totales por asignación y separarEnProgreso()
+lib/reportes.ts      cuadro resumen y comparativo ← PURO
+lib/exportar-cuadro.ts   el cuadro en .xlsx (exceljs bajo demanda)
+lib/exportar-formato.ts  una asignación en el formato oficial .xlsx
 lib/verificar.ts     prueba contra los 45 docentes reales
 lib/verificar-novedades.ts   prueba de la lógica de novedades
 lib/verificar-respaldo.ts    prueba del respaldo JSON
+lib/verificar-reportes.ts    prueba del cuadro resumen contra el motor
 lib/datos/almacen.ts         dónde persisten los stores ← punto de cambio a SQL
 lib/datos/respaldo.ts        formato y validación del respaldo ← PURO
 db/                  esquema SQL Server, semilla y migración (ver db/README.md)
@@ -272,6 +279,7 @@ npm run lint
 npx tsx src/lib/verificar.ts    # si tocaste cálculo, catálogos o tipos
 npx tsx src/lib/verificar-novedades.ts   # si tocaste lib/novedades.ts
 npx tsx src/lib/verificar-respaldo.ts    # si tocaste lib/datos/ o los tipos
+npx tsx src/lib/verificar-reportes.ts    # si tocaste lib/reportes.ts, exportar-*.ts o el cálculo
 ```
 
 Una funcionalidad nueva empieza por su `specs/NNN-nombre/spec.md`.

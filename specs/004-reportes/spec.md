@@ -4,6 +4,9 @@
 
 No se implementa hasta que el cliente confirme la lista.
 
+Ya implementados en [SPEC-005](../005-observaciones-novedades-reportes/spec.md):
+R1 (parte D) y el cuadro resumen de R2 (parte C).
+
 ## Propuesta
 
 | ID | Reporte                        | Contenido                                                            | Rol   | Salida          |

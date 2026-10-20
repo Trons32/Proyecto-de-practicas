@@ -245,6 +245,12 @@ export function periodoSiguiente(periodo: string): string {
   return semestre === 1 ? `${año}-2` : `${año + 1}-1`;
 }
 
+/** El periodo anterior a otro. Antes del 1 del año va el 2 del anterior. */
+export function periodoAnterior(periodo: string): string {
+  const [año, semestre] = periodo.split("-").map(Number);
+  return semestre === 2 ? `${año}-1` : `${año - 1}-2`;
+}
+
 /**
  * Los periodos entre los que se puede crear una asignación: el actual y el
  * siguiente, nada más. Crear es un acto sobre el futuro inmediato —el

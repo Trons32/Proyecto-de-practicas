@@ -50,6 +50,7 @@ const MODULOS = [
     icono: FiBarChart2,
     titulo: "Reportes",
     texto: "Consolidados de horas por facultad, programa y tipo de actividad.",
+    href: "/admin/reportes",
   },
   {
     icono: FiUsers,

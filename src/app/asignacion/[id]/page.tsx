@@ -16,6 +16,7 @@ import Bitacora from "@/components/Bitacora";
 import NoEncontrada from "../NoEncontrada";
 import { Boton, TarjetaStat, Insignia, InsigniaEstado } from "@/components/ui";
 import { sileo } from "@/lib/toast";
+import { libroFormatoOficial, nombreArchivoFormato } from "@/lib/exportar-formato";
 import {
   FiPlus,
   FiTrash2,
@@ -28,6 +29,7 @@ import {
   FiArrowRight,
   FiBookOpen,
   FiLock,
+  FiDownload,
 } from "@/components/iconos";
 
 export default function VistaAsignacion({ params }: { params: Promise<{ id: string }> }) {
@@ -48,6 +50,7 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
   const corrigiendo = asignacion?.estado === "en_correccion";
 
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
+  const [descargando, setDescargando] = useState(false);
 
   const resumen = useMemo(
     () => (asignacion ? resumirAsignacion(asignacion, config) : null),
@@ -109,6 +112,30 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
     });
   };
 
+  const descargarFormato = async () => {
+    setDescargando(true);
+    try {
+      const buffer = await libroFormatoOficial(asignacion, config);
+      const url = URL.createObjectURL(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        })
+      );
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = nombreArchivoFormato(asignacion);
+      a.click();
+      // Liberar en el mismo tick puede cortar la descarga en algunos navegadores.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      sileo.success({ title: "Formato descargado", description: a.download });
+    } catch (error) {
+      console.error(error);
+      sileo.error({ title: "No se pudo generar el Excel", description: "Inténtalo de nuevo." });
+    } finally {
+      setDescargando(false);
+    }
+  };
+
   const intentarEnviar = () => {
     if (resumen.totalDocentes === 0) {
       sileo.error({
@@ -157,6 +184,14 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
       >
         <InsigniaEstado estado={asignacion.estado} />
         {asignacion.version > 0 && <Insignia>v{asignacion.version}</Insignia>}
+        <Boton
+          variante="secundario"
+          onClick={descargarFormato}
+          disabled={resumen.totalDocentes === 0 || descargando}
+          title="El formato único de asignación académica, en Excel"
+        >
+          <FiDownload aria-hidden /> {descargando ? "Generando…" : "Formato oficial"}
+        </Boton>
         {editable && (
           <>
             <Boton variante="secundario" onClick={nuevoDocente}>
