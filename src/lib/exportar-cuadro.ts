@@ -20,6 +20,19 @@ export async function cargarExcelJS() {
   return mod.default ?? mod;
 }
 
+/** Entrega un libro generado al navegador como descarga. */
+export function guardarLibro(buffer: ArrayBuffer, nombre: string) {
+  const url = URL.createObjectURL(
+    new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+  );
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombre;
+  a.click();
+  // Liberar en el mismo tick puede cortar la descarga en algunos navegadores.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 // Excel no entiende variables CSS: son los tokens cecar-600, cecar-50 y
 // cecar-100 de globals.css, en ARGB. Si cambia la paleta, cambian aquí.
 const VERDE = "FF00733B";

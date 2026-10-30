@@ -3,10 +3,19 @@
 import Link from "next/link";
 import Encabezado from "@/components/Encabezado";
 import { Insignia } from "@/components/ui";
-import { FiArrowRight, FiBarChart2, FiFileText, FiAlertTriangle, FiClock, FiUsers } from "@/components/iconos";
+import {
+  FiAlertTriangle,
+  FiArrowRight,
+  FiBarChart2,
+  FiClock,
+  FiFileText,
+  FiLayers,
+  FiTrendingUp,
+  FiUsers,
+} from "@/components/iconos";
 
 /**
- * Los reportes del consolidado (SPEC-004 y SPEC-005). Se listan también los
+ * Los reportes del consolidado (SPEC-004, SPEC-005 y SPEC-009). Se listan también los
  * que faltan para que el administrador sepa qué viene, igual que el panel.
  */
 const REPORTES = [
@@ -16,6 +25,20 @@ const REPORTES = [
     texto:
       "Docentes y horas por dedicación: función sustantiva, nivel de formación, contrato y escalafón. El cuadro del consolidado institucional.",
     href: "/admin/reportes/cuadro-resumen",
+  },
+  {
+    icono: FiTrendingUp,
+    titulo: "Comparativo estadístico",
+    texto:
+      "Todos los periodos desde 2022-1, por programa y por modalidad, con las gráficas del consolidado. Los periodos anteriores al sistema vienen del Excel.",
+    href: "/admin/reportes/comparativo",
+  },
+  {
+    icono: FiLayers,
+    titulo: "Proyección",
+    texto:
+      "Lo aprobado la primera vez frente a lo vigente: cursos cerrados, horas reducidas y estudiantes por programa.",
+    href: "/admin/reportes/proyeccion",
   },
   {
     icono: FiFileText,

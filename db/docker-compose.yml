@@ -1,0 +1,41 @@
+# SQL Server local para desarrollo. En producción la base vive en el
+# servidor de la universidad; esto solo replica su motor.
+#
+#   docker compose -f db/docker-compose.yml --env-file .env.db up -d
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: aa-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Defina MSSQL_SA_PASSWORD en .env.db}
+      MSSQL_PID: Developer
+    ports:
+      - "${MSSQL_PUERTO:-1433}:1433"
+    volumes:
+      # Volumen con nombre: los datos sobreviven a un `down`; solo `down -v` los borra.
+      - aa-datos:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" -b -o /dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # Corre una vez: crea la base y carga esquema y semilla si aún no existen.
+  inicializar:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      MSSQL_BASE: ${MSSQL_BASE:-asignacion_academica}
+    volumes:
+      - ./:/db:ro
+    entrypoint: ["/bin/bash", "/db/inicializar.sh"]
+    restart: "no"
+
+volumes:
+  aa-datos:

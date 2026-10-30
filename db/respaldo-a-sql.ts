@@ -196,6 +196,23 @@ function generar(r: Respaldo): string {
         );
       });
     });
+
+    // Línea base de la proyección (SPEC-009), si la asignación ya se aprobó.
+    if (a.lineaBase) {
+      l.push(
+        `UPDATE aa.asignacion SET linea_base_fecha = ${txt(a.lineaBase.fecha)}, linea_base_version = ${a.lineaBase.version} WHERE id = ${uid(a.id)};`
+      );
+      a.lineaBase.cursos.forEach((k, j) => {
+        l.push(
+          `INSERT INTO aa.linea_base_curso (asignacion_id, orden, curso_id, docente_id, docente, codigo_curso, nombre_curso, semestre, grupo, intensidad_horaria, estudiantes) VALUES (` +
+            [
+              uid(a.id), j + 1, uid(k.id), uid(k.docenteId), txt(k.docente), txt(k.codigoCurso), txt(k.nombreCurso),
+              num(k.semestre), txt(k.grupo), num(k.intensidadHoraria), num(k.estudiantes),
+            ].join(", ") +
+            ");"
+        );
+      });
+    }
   }
 
   // Antes que la bitácora: los eventos de reapertura apuntan a su novedad.

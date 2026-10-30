@@ -44,3 +44,6 @@ next-env.d.ts
 /db/migracion*.sql
 *respaldo*.json
 asignacion-academica-*.json
+
+# usuarios reales de la aplicación (ver db/usuarios.ejemplo.sql)
+/db/usuarios.sql

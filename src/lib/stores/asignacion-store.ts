@@ -11,6 +11,7 @@ import {
   nuevoDocente,
   nuevoEvento,
   aplicarReglaDedicacion,
+  cursosBase,
   esEditable,
 } from "@/lib/tipos";
 
@@ -195,13 +196,27 @@ export const useAsignacionStore = create<AsignacionStore>()(
           // Se puede aprobar lo que está en revisión y también lo que acaba
           // de llegar, sin obligar al administrador a abrir la revisión.
           if (!a || (a.estado !== "en_revision" && a.estado !== "enviada")) return;
-          registrar(id, "aprobada", {
-            tipo: "aprobada",
-            autor: autor.nombres,
-            rolAutor: autor.rol,
-            nota,
-            version: a.version,
-          });
+          registrar(
+            id,
+            "aprobada",
+            {
+              tipo: "aprobada",
+              autor: autor.nombres,
+              rolAutor: autor.rol,
+              nota,
+              version: a.version,
+            },
+            // La primera aprobación es lo proyectado (SPEC-009); las
+            // siguientes no la tocan, o la proyección compararía lo
+            // vigente consigo mismo.
+            {
+              lineaBase: a.lineaBase ?? {
+                fecha: new Date().toISOString(),
+                version: a.version,
+                cursos: cursosBase(a.docentes),
+              },
+            }
+          );
         },
 
         devolver: (id, autor, nota, plazo) => {
@@ -284,9 +299,12 @@ export const useAsignacionStore = create<AsignacionStore>()(
       // v1 guardaba una sola asignación en la raíz; se descarta al migrar.
       // v3 introdujo el ciclo de aprobación: lo guardado en v2 solo conocía
       // "borrador" y "completada", y no tenía versión ni bitácora.
-      version: 3,
+      // v4 añadió la línea base (SPEC-009), opcional: lo aprobado antes no
+      // la tiene y no se inventa —sería decir que nada cambió desde entonces—.
+      version: 4,
       migrate: (guardado, version) => {
         if (version < 2) return { asignaciones: [] };
+        if (version >= 3) return guardado as { asignaciones: Asignacion[] };
 
         const { asignaciones = [] } = (guardado ?? {}) as { asignaciones?: Asignacion[] };
 

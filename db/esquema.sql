@@ -142,6 +142,10 @@ CREATE TABLE aa.asignacion (
                                               CONSTRAINT ck_asignacion_version CHECK (version >= 0),
   -- Solo aplica en en_correccion.
   plazo_correccion  DATETIMEOFFSET   NULL,
+  -- La línea base de la proyección (SPEC-009): cuándo se aprobó por primera
+  -- vez y qué versión. NULL en lo aprobado antes de SPEC-009 y en lo no aprobado.
+  linea_base_fecha   DATETIMEOFFSET  NULL,
+  linea_base_version INT             NULL,
   creada            DATETIMEOFFSET   NOT NULL,
   actualizada       DATETIMEOFFSET   NOT NULL,
   -- Concurrencia optimista: dos administradores no pueden pisarse una aprobación.
@@ -239,6 +243,26 @@ CREATE TABLE aa.actividad (
   -- borran, se dejan de ofrecer (rol.vigente).
   rol_id              INT           NULL CONSTRAINT fk_actividad_rol REFERENCES aa.rol (id),
   horas               DECIMAL(5, 1) NOT NULL CONSTRAINT ck_actividad_horas CHECK (horas >= 0)
+);
+
+/*
+  Los cursos tal como se aprobaron la primera vez (SPEC-009): lo proyectado.
+  Sin FK a docente_asignado a propósito: los docentes se reescriben en cada
+  guardado y la línea base tiene que sobrevivirlo. Solo se inserta.
+*/
+CREATE TABLE aa.linea_base_curso (
+  asignacion_id      UNIQUEIDENTIFIER NOT NULL CONSTRAINT fk_lbc_asignacion REFERENCES aa.asignacion (id) ON DELETE CASCADE,
+  orden              SMALLINT         NOT NULL,
+  curso_id           UNIQUEIDENTIFIER NOT NULL,
+  docente_id         UNIQUEIDENTIFIER NOT NULL,  -- el docente_asignado de entonces
+  docente            NVARCHAR(150)    NULL,
+  codigo_curso       NVARCHAR(20)     NULL,
+  nombre_curso       NVARCHAR(150)    NULL,
+  semestre           TINYINT          NULL,
+  grupo              NVARCHAR(5)      NULL,
+  intensidad_horaria DECIMAL(5, 1)    NULL,
+  estudiantes        SMALLINT         NULL,
+  CONSTRAINT pk_linea_base_curso PRIMARY KEY (asignacion_id, orden)
 );
 
 /* ─────────────────────────────── Novedades ──────────────────────────────── */
@@ -352,6 +376,12 @@ AS
   THROW 50001, 'La bitácora solo admite inserciones.', 1;
 GO
 
+CREATE TRIGGER aa.tr_linea_base_solo_insert ON aa.linea_base_curso
+INSTEAD OF UPDATE
+AS
+  THROW 50004, 'La línea base de la proyección no se modifica.', 1;
+GO
+
 CREATE TRIGGER aa.tr_novedad_solo_insert ON aa.novedad
 INSTEAD OF UPDATE, DELETE
 AS
@@ -397,4 +427,5 @@ DENY  UPDATE, DELETE ON aa.novedad_afectacion         TO rol_asignacion_app;
 DENY  UPDATE, DELETE ON aa.novedad_afectacion_docente TO rol_asignacion_app;
 DENY  UPDATE, DELETE ON aa.novedad_decision           TO rol_asignacion_app;
 DENY  UPDATE         ON aa.evento_asignacion          TO rol_asignacion_app;
+DENY  UPDATE         ON aa.linea_base_curso           TO rol_asignacion_app;
 GO

@@ -8,7 +8,8 @@
 
 import { calcularTotales, CONFIG_OFICIAL, type Configuracion } from "./calculo";
 import type { TipoRol } from "./catalogos";
-import { periodoAnterior, type Asignacion, type Docente, type EstadoAsignacion } from "./tipos";
+import type { CuadroHistorico, Modalidad, ProgramaHistorico } from "./historicos";
+import { cursosBase, periodoAnterior, type Asignacion, type CursoBase, type Docente, type EstadoAsignacion } from "./tipos";
 
 /* ------------------------------------------------------------------
    Qué asignaciones entran
@@ -315,4 +316,331 @@ export function comparativo(
     periodo,
     cuadro: cuadroResumen(asignacionesDelReporte(asignaciones, { ...f, periodo }), config),
   }));
+}
+
+/* ------------------------------------------------------------------
+   Comparativo estadístico completo (SPEC-009)
+   ------------------------------------------------------------------ */
+
+export type FuenteDato = "sistema" | "historico" | "vacio";
+
+export interface FilaComparable {
+  etiqueta: string;
+  /** null: sin dato (el Excel no lo traía, o la columna no existía entonces). */
+  valores: (number | null)[];
+  total: number | null;
+  subtotal?: boolean;
+}
+
+export interface CuadroComparable {
+  periodo: string;
+  /** Lo que el Excel decía del periodo ("2024-2 (NOVEDADES)"), o el periodo a secas. */
+  etiqueta: string;
+  fuente: FuenteDato;
+  bloques: { titulo: string; filas: FilaComparable[] }[];
+}
+
+const comoComparable = (periodo: string, c: CuadroResumen): CuadroComparable => ({
+  periodo,
+  etiqueta: periodo,
+  fuente: "sistema",
+  bloques: c.bloques,
+});
+
+/**
+ * Todos los periodos con datos hasta el elegido, del más antiguo al más
+ * reciente: los históricos del Excel y los del sistema.
+ *
+ * Un periodo con asignaciones del alcance usa las del sistema aunque haya
+ * histórico: es lo vigente. El histórico es institucional, así que con un
+ * filtro de facultad o programa no aplica y el periodo queda vacío.
+ */
+export function comparativoCompleto(
+  asignaciones: Asignacion[],
+  f: FiltroReporte,
+  historicos: CuadroHistorico[],
+  config: Configuracion = CONFIG_OFICIAL
+): CuadroComparable[] {
+  const filtrado = Boolean(f.facultad || f.programa);
+  const periodos = [
+    ...new Set([...historicos.map((h) => h.periodo), ...asignaciones.map((a) => a.periodo), f.periodo]),
+  ]
+    .filter((p) => p <= f.periodo)
+    .sort();
+
+  return periodos.map((periodo) => {
+    const propias = asignacionesDelReporte(asignaciones, { ...f, periodo });
+    if (propias.length > 0) return comoComparable(periodo, cuadroResumen(propias, config));
+    const h = historicos.find((x) => x.periodo === periodo);
+    if (h && !filtrado) return { periodo, etiqueta: h.etiqueta, fuente: "historico", bloques: h.bloques };
+    return { ...comoComparable(periodo, cuadroResumen([], config)), fuente: "vacio" };
+  });
+}
+
+/** El total de una fila del cuadro en un periodo, o null si no hay dato. */
+export const totalDe = (c: CuadroComparable, bloque: number, fila: number): number | null =>
+  c.fuente === "vacio" ? null : (c.bloques[bloque]?.filas[fila]?.total ?? null);
+
+/* ---- Por programa y por modalidad ---- */
+
+export interface ConteoDocentes {
+  tc: number | null;
+  mt: number | null;
+  cat: number | null;
+  tutor: number | null;
+  total: number | null;
+}
+
+const VACIO: ConteoDocentes = { tc: null, mt: null, cat: null, tutor: null, total: null };
+
+/**
+ * Las cuatro columnas del comparativo por programa. HORA_LABOR va con
+ * cátedra: el Excel no la tenía y es la otra dedicación por horas; sin
+ * esto esos docentes no estarían en ninguna columna.
+ */
+const GRUPO_DEDICACION: Record<string, keyof Omit<ConteoDocentes, "total">> = {
+  TIEMPO_COMPLETO: "tc",
+  MEDIO_TIEMPO: "mt",
+  "HORA_CÁTEDRA": "cat",
+  HORA_LABOR: "cat",
+  TUTOR_EAD: "tutor",
+  TUTOR_VIRTUAL: "tutor",
+};
+
+export function conteoDocentes(asignaciones: Asignacion[]): ConteoDocentes {
+  const c = { tc: 0, mt: 0, cat: 0, tutor: 0, total: 0 };
+  for (const a of asignaciones) {
+    for (const d of a.docentes) {
+      const g = GRUPO_DEDICACION[d.dedicacion];
+      if (!g) continue;
+      c[g]++;
+      c.total++;
+    }
+  }
+  return c;
+}
+
+export const MODALIDADES: Modalidad[] = ["PRESENCIAL", "DISTANCIA", "VIRTUAL"];
+
+export const ETIQUETA_MODALIDAD: Record<Modalidad, string> = {
+  PRESENCIAL: "Presencial",
+  DISTANCIA: "A distancia",
+  VIRTUAL: "Virtual",
+};
+
+/**
+ * La modalidad de un programa del catálogo. Se toma del histórico cuando el
+ * programa está enlazado (es lo que el consolidado ya decía); si no, del
+ * nombre, que en el catálogo la lleva (VIRTUAL, EAD).
+ */
+export function modalidadDe(programa: string, historicos: ProgramaHistorico[]): Modalidad {
+  const h = historicos.find((x) => x.programa === programa);
+  if (h) return h.modalidad;
+  if (/VIRTUAL/i.test(programa)) return "VIRTUAL";
+  if (/\bEAD\b/i.test(programa)) return "DISTANCIA";
+  return "PRESENCIAL";
+}
+
+type ConteoConFuente = ConteoDocentes & { fuente: FuenteDato };
+
+export interface FilaPrograma {
+  modalidad: Modalidad;
+  facultad: string;
+  /** El nombre a mostrar: el del catálogo, o el del Excel si no está enlazado. */
+  nombre: string;
+  /** El del catálogo, si existe. */
+  programa: string | null;
+  periodos: Record<string, ConteoConFuente>;
+}
+
+const historicoOVacio = (v: ConteoDocentes | undefined): ConteoConFuente =>
+  v ? { ...v, fuente: "historico" } : { ...VACIO, fuente: "vacio" };
+
+/**
+ * Docentes por programa y periodo, como las tablas del COMPARATIVO
+ * ESTADÍSTICO. Mismas reglas que `comparativoCompleto`: el sistema manda
+ * donde tiene asignaciones; el histórico rellena. Los programas del Excel
+ * sin equivalente en el catálogo se muestran con su nombre del Excel.
+ */
+export function comparativoPorPrograma(
+  asignaciones: Asignacion[],
+  periodos: string[],
+  alcance: Alcance,
+  historicos: ProgramaHistorico[],
+  programas: { nombre: string; facultad: string }[]
+): FilaPrograma[] {
+  const filas: FilaPrograma[] = programas.map((p) => {
+    const h = historicos.find((x) => x.programa === p.nombre);
+    return {
+      modalidad: modalidadDe(p.nombre, historicos),
+      facultad: p.facultad,
+      nombre: p.nombre,
+      programa: p.nombre,
+      periodos: Object.fromEntries(
+        periodos.map((periodo): [string, ConteoConFuente] => {
+          const propias = asignacionesDelReporte(asignaciones, { periodo, alcance, programa: p.nombre });
+          return [
+            periodo,
+            propias.length > 0 ? { ...conteoDocentes(propias), fuente: "sistema" } : historicoOVacio(h?.periodos[periodo]),
+          ];
+        })
+      ),
+    };
+  });
+
+  for (const h of historicos.filter((x) => x.programa === null)) {
+    filas.push({
+      modalidad: h.modalidad,
+      facultad: h.facultad,
+      nombre: h.nombre,
+      programa: null,
+      periodos: Object.fromEntries(periodos.map((periodo) => [periodo, historicoOVacio(h.periodos[periodo])])),
+    });
+  }
+
+  // Un programa sin ningún dato en ningún periodo solo estorba en la tabla.
+  return filas.filter((f) => Object.values(f.periodos).some((v) => v.fuente !== "vacio"));
+}
+
+const sumar = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
+
+/**
+ * Docentes por modalidad. En los periodos históricos se usa la tabla del
+ * Excel, no la suma de sus programas: el Excel no siempre cuadra consigo
+ * mismo y el comparativo debe mostrar lo mismo que él.
+ */
+export function comparativoPorModalidad(
+  filas: FilaPrograma[],
+  periodos: string[],
+  historicoModalidad: Record<Modalidad, Record<string, Partial<ConteoDocentes>>>
+): Record<Modalidad, Record<string, ConteoDocentes>> {
+  const salida = {} as Record<Modalidad, Record<string, ConteoDocentes>>;
+  for (const m of MODALIDADES) {
+    salida[m] = {};
+    for (const periodo of periodos) {
+      const conSistema = filas.some((f) => f.modalidad === m && f.periodos[periodo]?.fuente === "sistema");
+      const h = historicoModalidad[m]?.[periodo];
+      if (!conSistema && h) {
+        const v = { tc: h.tc ?? null, mt: h.mt ?? null, cat: h.cat ?? null, tutor: h.tutor ?? null };
+        salida[m][periodo] = { ...v, total: [v.tc, v.mt, v.cat, v.tutor].reduce(sumar, null) };
+        continue;
+      }
+      const c = { ...VACIO };
+      for (const f of filas) {
+        const v = f.periodos[periodo];
+        if (f.modalidad !== m || !v || v.fuente === "vacio") continue;
+        c.tc = sumar(c.tc, v.tc);
+        c.mt = sumar(c.mt, v.mt);
+        c.cat = sumar(c.cat, v.cat);
+        c.tutor = sumar(c.tutor, v.tutor);
+        c.total = sumar(c.total, v.total);
+      }
+      salida[m][periodo] = c;
+    }
+  }
+  return salida;
+}
+
+/* ------------------------------------------------------------------
+   Proyección: lo aprobado la primera vez contra lo vigente (SPEC-009)
+   ------------------------------------------------------------------ */
+
+export interface ResumenCursos {
+  cursos: number;
+  horas: number;
+  /** Σ estudiantes de los cursos: cupos, no personas (una persona toma varios cursos). */
+  estudiantes: number;
+  /** Grupos distintos de primer semestre: la cohorte que entra. */
+  gruposPrimerSemestre: number;
+  estudiantesPrimerSemestre: number;
+}
+
+export function resumenCursos(cursos: CursoBase[]): ResumenCursos {
+  const primero = cursos.filter((k) => k.semestre === 1);
+  return {
+    cursos: cursos.length,
+    horas: cursos.reduce((s, k) => s + (k.intensidadHoraria ?? 0), 0),
+    estudiantes: cursos.reduce((s, k) => s + (k.estudiantes ?? 0), 0),
+    gruposPrimerSemestre: new Set(primero.map((k) => k.grupo.trim()).filter(Boolean)).size,
+    estudiantesPrimerSemestre: primero.reduce((s, k) => s + (k.estudiantes ?? 0), 0),
+  };
+}
+
+export interface FilaProyeccion {
+  asignacionId: string;
+  programa: string;
+  facultad: string;
+  estado: EstadoAsignacion;
+  /** Cuándo se aprobó por primera vez. */
+  fechaBase: string;
+  proyectado: ResumenCursos;
+  ajustado: ResumenCursos;
+  /** En la línea base y ya no vigentes (por id). */
+  cerrados: CursoBase[];
+  /** Vigentes que no estaban en la línea base. */
+  nuevos: CursoBase[];
+}
+
+export interface Proyeccion {
+  filas: FilaProyeccion[];
+  total: { proyectado: ResumenCursos; ajustado: ResumenCursos; cerrados: number; nuevos: number };
+  /** Aprobadas antes de SPEC-009: sin línea base no hay con qué comparar. */
+  sinLineaBase: Asignacion[];
+}
+
+const sumarResumen = (a: ResumenCursos, b: ResumenCursos): ResumenCursos => ({
+  cursos: a.cursos + b.cursos,
+  horas: a.horas + b.horas,
+  estudiantes: a.estudiantes + b.estudiantes,
+  gruposPrimerSemestre: a.gruposPrimerSemestre + b.gruposPrimerSemestre,
+  estudiantesPrimerSemestre: a.estudiantesPrimerSemestre + b.estudiantesPrimerSemestre,
+});
+
+/**
+ * La hoja PROYECCIÓN del consolidado: por programa, los cursos aprobados la
+ * primera vez contra los vigentes. Entra toda asignación del periodo con
+ * línea base, esté como esté ahora: una reabierta para corregir sigue
+ * siendo parte de la proyección, y su estado se muestra.
+ */
+export function proyeccion(
+  asignaciones: Asignacion[],
+  f: Pick<FiltroReporte, "periodo" | "facultad" | "programa">
+): Proyeccion {
+  const delPeriodo = asignacionesDelReporte(asignaciones, { ...f, alcance: "todas" });
+  const filas: FilaProyeccion[] = [];
+  const sinLineaBase: Asignacion[] = [];
+
+  for (const a of delPeriodo) {
+    if (!a.lineaBase) {
+      if (a.estado === "aprobada" || a.version > 0) sinLineaBase.push(a);
+      continue;
+    }
+    const vigentes = cursosBase(a.docentes);
+    const idsVigentes = new Set(vigentes.map((k) => k.id));
+    const idsBase = new Set(a.lineaBase.cursos.map((k) => k.id));
+    filas.push({
+      asignacionId: a.id,
+      programa: a.programa,
+      facultad: a.facultad,
+      estado: a.estado,
+      fechaBase: a.lineaBase.fecha,
+      proyectado: resumenCursos(a.lineaBase.cursos),
+      ajustado: resumenCursos(vigentes),
+      cerrados: a.lineaBase.cursos.filter((k) => !idsVigentes.has(k.id)),
+      nuevos: vigentes.filter((k) => !idsBase.has(k.id)),
+    });
+  }
+
+  filas.sort((x, y) => x.programa.localeCompare(y.programa));
+  const cero = resumenCursos([]);
+  return {
+    filas,
+    total: {
+      proyectado: filas.reduce((s, x) => sumarResumen(s, x.proyectado), cero),
+      ajustado: filas.reduce((s, x) => sumarResumen(s, x.ajustado), cero),
+      cerrados: filas.reduce((s, x) => s + x.cerrados.length, 0),
+      nuevos: filas.reduce((s, x) => s + x.nuevos.length, 0),
+    },
+    sinLineaBase,
+  };
 }

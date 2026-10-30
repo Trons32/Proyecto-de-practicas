@@ -18,6 +18,11 @@ NNN-nombre/spec.md    problema, reglas, criterios de aceptación (Dado / Cuando 
 | 003 | Página de Novedades                      | P1        | Implementada                    |
 | 004 | Reportes                                 | P2        | Borrador, a validar con cliente |
 | 005 | Observaciones, novedades y reportes       | P1        | Parcial: A, C y D implementadas; B en borrador |
+| 006 | Conexión a SQL Server                    | P1        | Implementada (desarrollo, sin autenticación) |
+| 007 | El servidor hace cumplir el ciclo de vida | P0        | Implementada                    |
+| 008 | Sesión en el servidor                    | P0        | Implementada (usuarios de prueba; falta Aldea) |
+| 009 | Gráficas, comparativo y proyección       | P1        | Implementada; preguntas abiertas al cliente |
+| 010 | Despliegue y credenciales por API       | P0        | Implementada; falta el contrato real de la API |
 
 ## Definición de terminado
 
@@ -29,6 +34,9 @@ NNN-nombre/spec.md    problema, reglas, criterios de aceptación (Dado / Cuando 
 - `npx tsx src/lib/verificar-respaldo.ts` pasa si se tocó `lib/datos/` o la forma de los tipos.
 - `npx tsx src/lib/verificar-reportes.ts` pasa si se tocó `lib/reportes.ts`, `lib/exportar-*.ts` o el cálculo.
 - `db/prueba-esquema.sql` pasa si se tocó `db/esquema.sql`.
+- `npx tsx src/lib/verificar-transiciones.ts` pasa si se tocó `lib/transiciones.ts`, el store de asignaciones o el ciclo de vida.
+- `npx tsx src/lib/servidor/verificar-sesion.ts` pasa si se tocó la sesión o `lib/auth/`.
+- `src/lib/servidor/verificar-sql.ts` pasa si se tocó `lib/servidor/`, `db/esquema.sql` o la forma de los tipos.
 - Probado con los dos roles.
 - Si cambia la forma del estado persistido: se subió `version` y se escribió
   el `migrate` del store.

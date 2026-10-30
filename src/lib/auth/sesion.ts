@@ -1,9 +1,9 @@
 /**
  * Autenticación y roles.
  *
- * El inicio de sesión se resuelve hoy contra usuarios locales de prueba;
- * `autenticar` es el único punto que habrá que cambiar cuando exista el
- * endpoint real, sin tocar las vistas ni el guard de rutas.
+ * El inicio de sesión se resuelve hoy contra usuarios de prueba: en el
+ * navegador sin SQL, en el servidor con SQL. Cuando llegue Aldea, el único
+ * punto a cambiar es `verificarCredenciales` de `lib/servidor/sesion.ts`.
  */
 
 export type Rol = "ADMIN" | "COORDINADOR";
@@ -55,31 +55,49 @@ export interface ResultadoAuth {
 }
 
 /**
- * Valida las credenciales. Al conectar la API real, esta función pasa a
- * hacer el POST y a mapear la respuesta a `Usuario`.
+ * Busca entre los usuarios de prueba. La usan `autenticar` en modo local y
+ * `verificarCredenciales` del servidor hasta que llegue Aldea.
  */
-export async function autenticar(email: string, clave: string): Promise<ResultadoAuth> {
-  // Retardo breve: sin él el spinner parpadea y la espera se siente rota.
-  await new Promise((r) => setTimeout(r, 400));
-
+export function buscarUsuarioDePrueba(email: string, clave: string): Usuario | null {
   const encontrado = USUARIOS.find(
     (u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.clave === clave
   );
+  if (!encontrado) return null;
+  // La clave no sale de aquí: solo se devuelven los datos del usuario.
+  return { id: encontrado.id, nombres: encontrado.nombres, email: encontrado.email, rol: encontrado.rol };
+}
 
-  if (!encontrado) {
-    return { ok: false, mensaje: "Credenciales incorrectas." };
+const EN_SQL = process.env.NEXT_PUBLIC_ALMACEN === "sql";
+
+/**
+ * Valida las credenciales. Con SQL (SPEC-008) las valida el servidor, que
+ * deja una cookie firmada: sin ella la API no responde. `recordarme` decide
+ * si esa cookie sobrevive al cierre del navegador.
+ */
+export async function autenticar(email: string, clave: string, recordarme = false): Promise<ResultadoAuth> {
+  if (EN_SQL) {
+    try {
+      const r = await fetch("/api/sesion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, clave, recordarme }),
+      });
+      const cuerpo = await r.json().catch(() => ({}));
+      return r.ok ? { ok: true, usuario: cuerpo.usuario } : { ok: false, mensaje: cuerpo.mensaje ?? "Credenciales incorrectas." };
+    } catch {
+      return { ok: false, mensaje: "No hay conexión con el servidor." };
+    }
   }
 
-  // La clave no sale de aquí: solo se devuelven los datos del usuario.
-  return {
-    ok: true,
-    usuario: {
-      id: encontrado.id,
-      nombres: encontrado.nombres,
-      email: encontrado.email,
-      rol: encontrado.rol,
-    },
-  };
+  // Retardo breve: sin él el spinner parpadea y la espera se siente rota.
+  await new Promise((r) => setTimeout(r, 400));
+  const usuario = buscarUsuarioDePrueba(email, clave);
+  return usuario ? { ok: true, usuario } : { ok: false, mensaje: "Credenciales incorrectas." };
+}
+
+/** Borra la cookie del servidor. Sin SQL no hay nada que borrar allá. */
+export function cerrarEnServidor(): void {
+  if (EN_SQL) void fetch("/api/sesion", { method: "DELETE" }).catch(() => {});
 }
 
 /** Dónde aterriza cada rol tras iniciar sesión. */

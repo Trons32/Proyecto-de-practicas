@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import {
+  cerrarEnServidor,
   CLAVE_SESION,
   DURACION_SESION_MS,
   type Sesion,
@@ -73,6 +74,7 @@ export const useSesionStore = create<SesionStore>()((set) => ({
 
   cerrar: () => {
     borrar();
+    cerrarEnServidor();
     set({ sesion: null, hidratado: true });
   },
 

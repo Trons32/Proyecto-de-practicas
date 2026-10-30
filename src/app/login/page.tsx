@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useSesionStore } from "@/lib/stores/sesion-store";
 import { autenticar, inicioDeRol } from "@/lib/auth/sesion";
+import { recargarDatos } from "@/lib/datos/recargar";
 import { FiMail, FiLock, FiEye, FiEyeOff, FiAlertCircle } from "@/components/iconos";
 
 export default function Login() {
@@ -23,7 +24,7 @@ export default function Login() {
     setError("");
     setCargando(true);
 
-    const r = await autenticar(email, clave);
+    const r = await autenticar(email, clave, recordarme);
 
     if (!r.ok || !r.usuario) {
       setError(r.mensaje ?? "No fue posible iniciar sesión.");
@@ -32,6 +33,8 @@ export default function Login() {
     }
 
     iniciar(r.usuario, recordarme);
+    // Con SQL, lo que se intentó cargar antes del login fue rechazado.
+    if (process.env.NEXT_PUBLIC_ALMACEN === "sql") await recargarDatos();
     router.replace(inicioDeRol(r.usuario.rol));
   };
 

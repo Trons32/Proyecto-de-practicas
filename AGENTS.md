@@ -15,8 +15,9 @@ Excel (`ASIGNACION_IS_2026_2PV3.xlsx`): el coordinador registra los docentes de
 su programa, reparte horas entre cursos, descargas y actividades
 administrativas, y el sistema le dice si la carga cuadra con la dedicación.
 
-Next.js 16 · App Router · React 19 · Tailwind v4 · Zustand. **Sin backend**: hoy
-todo vive en el navegador.
+Next.js 16 · App Router · React 19 · Tailwind v4 · Zustand. Por defecto todo
+vive en el navegador; con `NEXT_PUBLIC_ALMACEN=sql` persiste en SQL Server
+(SPEC-006), con sesión en el servidor (SPEC-008).
 
 ---
 
@@ -52,8 +53,8 @@ npx tsx src/lib/verificar.ts
 
 ### 3. Todo es cliente, y todo se persiste a mano
 
-No hay base de datos, ni API, ni server actions. Cada página empieza con
-`"use client"` y el estado vive en tres stores de Zustand:
+No hay server actions. Cada página empieza con `"use client"` y el estado
+vive en tres stores de Zustand:
 
 ```
 lib/stores/asignacion-store.ts   las asignaciones   → localStorage (persist)
@@ -63,9 +64,14 @@ lib/stores/sesion-store.ts       la sesión          → local o session, a mano
 ```
 
 Los tres primeros no tocan localStorage: persisten por `almacenamiento()` de
-`lib/datos/almacen.ts`, el único punto a cambiar para pasar a SQL. No
-añadas otro `localStorage` suelto ni cambies las claves de `CLAVES`: los
-datos guardados quedarían huérfanos.
+`lib/datos/almacen.ts`. Con `NEXT_PUBLIC_ALMACEN=sql` ese adaptador habla con
+`/api/estado/[clave]` (`lib/servidor/`) y envía **solo lo que cambió**, para
+que un cliente no borre lo que creó otro. No añadas otro `localStorage`
+suelto ni cambies las claves de `CLAVES`: los datos guardados quedarían
+huérfanos, y la API las usa como ruta.
+
+`lib/servidor/` solo se importa desde el servidor (route handlers y
+scripts): lleva las credenciales de la base.
 
 ---
 
@@ -141,6 +147,13 @@ solo `borrador` y `en_correccion`. El store lo hace cumplir —`agregarDocente`,
 `actualizarDocente` y `eliminarDocente` no hacen nada si la asignación está
 congelada— así que ocultar un botón no basta ni es lo que protege el dato.
 
+Con SQL, el servidor lo vuelve a comprobar: `lib/transiciones.ts` exige que
+todo cambio de estado se explique con un evento nuevo de la bitácora, en el
+orden del ciclo, y rechaza (409) lo demás. **Si agregas una transición al
+store, agrégala también a `PASOS` en `transiciones.ts`** o el servidor la
+rechazará; `verificar-transiciones.ts` lo detecta porque recorre el ciclo con
+las acciones reales del store.
+
 **Hay dos relojes distintos** y confundirlos rompe el flujo:
 
 - La **convocatoria** (`lib/convocatoria.ts`) es el plazo general del periodo,
@@ -151,6 +164,11 @@ congelada— así que ocultar un botón no basta ni es lo que protege el dato.
 
 `usePlazo()` en `lib/usar-plazo.ts` resuelve cuál aplica. Úsalo en vez de
 comparar fechas a mano.
+
+**La línea base es lo proyectado (SPEC-009).** La primera aprobación guarda
+los cursos en `asignacion.lineaBase`; reabrir y corregir no la toca. El
+reporte de proyección compara esa foto con lo vigente. Solo `aprobar` la
+fija, y el servidor rechaza cualquier otro cambio.
 
 **La bitácora es append-only.** Cada transición agrega un evento con quién,
 cuándo y por qué; los eventos no se editan ni se borran, porque su valor está en
@@ -233,20 +251,33 @@ lib/tipos.ts         modelo de dominio, ciclo de vida y constructores
 lib/convocatoria.ts  plazos de entrega y su vencimiento
 lib/usar-plazo.ts    qué plazo rige y si se puede enviar (hook usePlazo)
 lib/impacto.ts       qué aprobadas rompe un cambio de parámetros
+lib/transiciones.ts  qué cambios admite el servidor en una asignación ← PURO
+lib/verificar-transiciones.ts   prueba del ciclo con las acciones del store
 lib/novedades.ts     diferencias de parámetros y foto de impacto ← PURO
 lib/resumen.ts       totales por asignación y separarEnProgreso()
-lib/reportes.ts      cuadro resumen y comparativo ← PURO
+lib/reportes.ts      cuadro resumen, comparativo y proyección ← PURO
+lib/historicos.ts    cifras 2022-1…2025-2 del consolidado ← GENERADO, NO EDITAR A MANO
+components/Graficas.tsx   gráficas SVG de los reportes (paleta validada, ver el comentario)
 lib/exportar-cuadro.ts   el cuadro en .xlsx (exceljs bajo demanda)
 lib/exportar-formato.ts  una asignación en el formato oficial .xlsx
+lib/exportar-comparativo.ts   el comparativo y la proyección en .xlsx
 lib/verificar.ts     prueba contra los 45 docentes reales
 lib/verificar-novedades.ts   prueba de la lógica de novedades
 lib/verificar-respaldo.ts    prueba del respaldo JSON
 lib/verificar-reportes.ts    prueba del cuadro resumen contra el motor
 lib/datos/almacen.ts         dónde persisten los stores ← punto de cambio a SQL
 lib/datos/respaldo.ts        formato y validación del respaldo ← PURO
+lib/servidor/*       conexión, lectura y escritura en SQL Server ← SOLO SERVIDOR
+lib/servidor/verificar-sql.ts   prueba de ida y vuelta contra la base
+app/api/estado/[clave]       la API de estado (exige la cookie de sesión)
+app/api/sesion               iniciar y cerrar sesión: cookie httpOnly firmada
+lib/servidor/sesion.ts       firma de la cookie y verificarCredenciales() ← AQUÍ ENTRA ALDEA
+lib/servidor/aldea.ts        la API de credenciales + aa.usuario (SPEC-010)
+app/api/salud                sonda del despliegue: ¿hay base y secreto?
+DESPLIEGUE.md                paso a paso para producción
 db/                  esquema SQL Server, semilla y migración (ver db/README.md)
 specs/               especificaciones (Spec-Driven Development)
-lib/auth/sesion.ts   usuarios de prueba y roles ← único punto a cambiar por la API
+lib/auth/sesion.ts   usuarios de prueba, roles y autenticar() del navegador
 lib/stores/*         estado persistido
 
 components/ui.tsx    Campo, Entrada, Seleccion, Seccion, Boton…
@@ -280,6 +311,9 @@ npx tsx src/lib/verificar.ts    # si tocaste cálculo, catálogos o tipos
 npx tsx src/lib/verificar-novedades.ts   # si tocaste lib/novedades.ts
 npx tsx src/lib/verificar-respaldo.ts    # si tocaste lib/datos/ o los tipos
 npx tsx src/lib/verificar-reportes.ts    # si tocaste lib/reportes.ts, exportar-*.ts o el cálculo
+npx tsx src/lib/verificar-transiciones.ts   # si tocaste el ciclo de vida o el store de asignaciones
+npx tsx src/lib/servidor/verificar-sesion.ts   # si tocaste la sesión o lib/auth/
+MSSQL_BASE=asignacion_academica_prueba MSSQL_CLAVE=… npx tsx src/lib/servidor/verificar-sql.ts   # si tocaste lib/servidor/ o los tipos
 ```
 
 Una funcionalidad nueva empieza por su `specs/NNN-nombre/spec.md`.
@@ -296,14 +330,22 @@ Y pruébalo **con los dos roles** (`admin@cecar.edu.co` / `admin123`,
 - Tocar `lib/__fixture.json` para que `verificar.ts` pase.
 - Cambiar la forma del estado persistido sin subir `version` y escribir el
   `migrate` del store: rompe los datos que el usuario ya tiene guardados.
-  (Van por `asignaciones` v3, `configuracion` v2 y `novedades` v1.)
+  (Van por `asignaciones` v4, `configuracion` v2 y `novedades` v1.)
 - Cambiar el estado de una asignación fuera de las acciones del ciclo de vida,
   o editar la bitácora: deja el expediente mintiendo.
 - Permitir que se edite una asignación ya entregada. Si hace falta reabrirla,
   se reabre por el camino previsto (`reabrirPorParametros`), que deja rastro.
-- Traer un backend, una base de datos o un ORM. Cuando exista la API real, los
-  puntos de entrada son `autenticar()` en `lib/auth/sesion.ts` y
-  `almacenamiento()` en `lib/datos/almacen.ts`; el esquema ya está en `db/`.
+- Traer un ORM u otro motor de base de datos. La base es SQL Server (la de la
+  universidad) y se habla con `mssql` desde `lib/servidor/`.
+- Escribir desde `/api/estado` sin pasar por `usuarioActual()`, o confiar en
+  el `rolAutor` que manda el navegador: el rol sale de la cookie.
+- Cambiar cómo se validan las credenciales fuera de `verificarCredenciales()`
+  (`lib/servidor/sesion.ts`): es el único punto donde entra Aldea.
 - Cambiar la forma de `Asignacion`, `Docente` o `Novedad` sin revisar
   `db/esquema.sql` y `db/respaldo-a-sql.ts`: la migración dejaría de cuadrar.
 - Si cambia `catalogos.ts`, regenerar la semilla: `npx tsx db/generar-semilla.ts`.
+- Editar `lib/historicos.ts` a mano. Se regenera desde el consolidado con
+  `npx tsx db/generar-historicos.ts "<consolidado.xlsx>"`; sus cifras dudosas
+  se conservan a propósito (spec 009).
+- Cambiar `esquema.sql` sin escribir su migración en `db/migraciones/`: las
+  bases que ya existen no se recrean.

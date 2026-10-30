@@ -25,7 +25,14 @@ import { FiDownload, FiUpload } from "@/components/iconos";
  * Mientras no haya base de datos, lo registrado vive en un solo navegador.
  * Esta página es la salida de emergencia —y el puente para migrar a SQL—:
  * el archivo tiene la forma que recibirá la API.
+ *
+ * Con SQL Server (SPEC-006) importar queda deshabilitado: reemplazar todo
+ * desde el navegador se saltaría el ciclo de vida que el servidor hace
+ * cumplir, y el servidor lo rechazaría a medias. Un respaldo se carga en la
+ * base con `db/respaldo-a-sql.ts`, que lo revisa antes.
  */
+const EN_SQL = process.env.NEXT_PUBLIC_ALMACEN === "sql";
+
 export default function RespaldoDatos() {
   const asignaciones = useAsignacionStore((s) => s.asignaciones);
   const hidratadoA = useAsignacionStore((s) => s.hidratado);
@@ -93,7 +100,7 @@ export default function RespaldoDatos() {
         <section className="tarjeta tarjeta-sombra p-5">
           <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">Exportar</h3>
           <p className="mt-1 text-sm text-[var(--color-texto-suave)]">
-            Descarga todo lo registrado en este navegador: {asignaciones.length} asignaciones,{" "}
+            Descarga todo lo registrado {EN_SQL ? "en la base de datos" : "en este navegador"}: {asignaciones.length} asignaciones,{" "}
             {docentes} docentes y {novedades.length} novedades, con sus bitácoras y la
             parametrización vigente.
           </p>
@@ -105,8 +112,9 @@ export default function RespaldoDatos() {
         <section className="tarjeta tarjeta-sombra p-5">
           <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">Importar</h3>
           <p className="mt-1 text-sm text-[var(--color-texto-suave)]">
-            Reemplaza todos los datos actuales por los del archivo. Descargue antes un respaldo
-            si quiere conservar lo que hay.
+            {EN_SQL
+              ? "Los datos viven en la base de datos. Para cargar un respaldo, el encargado de la base lo convierte con db/respaldo-a-sql.ts, que lo revisa antes de tocar nada."
+              : "Reemplaza todos los datos actuales por los del archivo. Descargue antes un respaldo si quiere conservar lo que hay."}
           </p>
           <input
             ref={archivo}
@@ -117,7 +125,12 @@ export default function RespaldoDatos() {
             aria-hidden
             tabIndex={-1}
           />
-          <Boton variante="secundario" className="mt-4" onClick={() => archivo.current?.click()}>
+          <Boton
+            variante="secundario"
+            className="mt-4"
+            disabled={EN_SQL}
+            onClick={() => archivo.current?.click()}
+          >
             <FiUpload aria-hidden /> Elegir archivo
           </Boton>
         </section>

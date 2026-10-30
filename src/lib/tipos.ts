@@ -148,12 +148,67 @@ export interface Asignacion {
   plazoCorreccion?: string;
   /** Trazabilidad, del evento más antiguo al más reciente. */
   bitacora: Evento[];
+  /**
+   * Los cursos tal como se aprobaron la primera vez (SPEC-009): lo
+   * proyectado. Lo vigente puede cambiar después —se reabre y se corrige—
+   * y la proyección compara una cosa con la otra. Se fija una sola vez y
+   * nunca más; las aprobadas antes de SPEC-009 no la tienen.
+   */
+  lineaBase?: LineaBase;
 }
 
-const uid = () =>
-  typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : Math.random().toString(36).slice(2);
+/** Un curso de la línea base: lo necesario para compararlo, no la ficha entera. */
+export interface CursoBase {
+  /** El id del curso: así se sabe si sigue vigente o se cerró. */
+  id: string;
+  docenteId: string;
+  docente: string;
+  codigoCurso: string;
+  nombreCurso: string;
+  semestre: number | null;
+  grupo: string;
+  intensidadHoraria: number | null;
+  estudiantes: number | null;
+}
+
+export interface LineaBase {
+  /** ISO 8601: cuándo se aprobó por primera vez. */
+  fecha: string;
+  /** La versión que se aprobó. */
+  version: number;
+  cursos: CursoBase[];
+}
+
+/** Los cursos de una asignación como línea base. */
+export const cursosBase = (docentes: Docente[]): CursoBase[] =>
+  docentes.flatMap((d) =>
+    d.cursos.map((k) => ({
+      id: k.id,
+      docenteId: d.id,
+      docente: d.nombres,
+      codigoCurso: k.codigoCurso,
+      nombreCurso: k.nombreCurso,
+      semestre: k.semestre,
+      grupo: k.grupo,
+      intensidadHoraria: k.intensidadHoraria,
+      estudiantes: k.estudiantes,
+    }))
+  );
+
+/**
+ * Siempre un UUID v4: la base los guarda como UNIQUEIDENTIFIER.
+ * `randomUUID` no existe fuera de un contexto seguro (http dentro de la red
+ * de la universidad), pero `getRandomValues` sí.
+ */
+const uid = (): string => {
+  if (typeof crypto === "undefined") return Math.random().toString(36).slice(2);
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+};
 
 export const nuevaDescarga = (): Descarga => ({ id: uid(), rolId: null, horas: 0 });
 export const nuevaAdministrativa = (): Administrativa => ({ id: uid(), rolId: null, horas: 0 });

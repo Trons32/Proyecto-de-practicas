@@ -18,9 +18,10 @@ import {
   type CuadroDePeriodo,
   type CuadroResumen,
 } from "@/lib/reportes";
-import { libroCuadroResumen } from "@/lib/exportar-cuadro";
+import { guardarLibro, libroCuadroResumen } from "@/lib/exportar-cuadro";
 import { sileo } from "@/lib/toast";
 import Encabezado from "@/components/Encabezado";
+import { GraficaBarras, GraficaColumnas, GraficaProporcion } from "@/components/Graficas";
 import { Boton, Campo, Seleccion, TarjetaStat } from "@/components/ui";
 import {
   FiArrowLeft,
@@ -110,18 +111,9 @@ export default function CuadroResumenPagina() {
         cuadro,
         comparativo: historico,
       });
-      const url = URL.createObjectURL(
-        new Blob([buffer], {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        })
-      );
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `cuadro-resumen-${periodo}.xlsx`;
-      a.click();
-      // Liberar en el mismo tick puede cortar la descarga en algunos navegadores.
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-      sileo.success({ title: "Cuadro descargado", description: a.download });
+      const nombre = `cuadro-resumen-${periodo}.xlsx`;
+      guardarLibro(buffer, nombre);
+      sileo.success({ title: "Cuadro descargado", description: nombre });
     } catch (error) {
       console.error(error);
       sileo.error({ title: "No se pudo generar el Excel", description: "Inténtalo de nuevo." });
@@ -251,12 +243,44 @@ export default function CuadroResumenPagina() {
             estos filtros.
           </section>
         ) : (
-          <TablaPeriodo cuadro={cuadro} />
+          <>
+            <TablaPeriodo cuadro={cuadro} />
+            <GraficasCuadro cuadro={cuadro} />
+          </>
         )
       ) : (
         <TablaComparativo periodos={historico} />
       )}
     </main>
+  );
+}
+
+/**
+ * Las cinco gráficas de la hoja CUADRO RESUMEN del Excel, con las mismas
+ * series. La torta de dedicación va como barra al 100 % (ver Graficas.tsx).
+ */
+function GraficasCuadro({ cuadro }: { cuadro: CuadroResumen }) {
+  const [funcion, nivel, contrato, categoria] = cuadro.bloques;
+  const totales = (filas: CuadroResumen["bloques"][number]["filas"]) =>
+    filas.map((f) => ({ etiqueta: f.etiqueta, valor: f.total }));
+  const subtotales = funcion.filas.filter((f) => f.subtotal);
+
+  return (
+    <section className="mt-6 grid gap-6 lg:grid-cols-2" aria-label="Gráficas del cuadro resumen">
+      <GraficaColumnas
+        titulo="Total docentes"
+        subtitulo="Por dedicación"
+        datos={COLUMNAS_CUADRO.map((c, i) => ({ etiqueta: c.texto, valor: funcion.filas[0].valores[i] }))}
+      />
+      <GraficaColumnas titulo="Nivel de formación" subtitulo="Docentes por máximo nivel" datos={totales(nivel.filas)} />
+      <GraficaBarras titulo="Tipo de contrato" subtitulo="Docentes" datos={totales(contrato.filas)} />
+      <GraficaBarras titulo="Categorías de los docentes" subtitulo="Escalafón" datos={totales(categoria.filas)} />
+      <GraficaProporcion
+        titulo="Dedicación de los docentes"
+        subtitulo="Horas semanales por función sustantiva"
+        datos={subtotales.map((f) => ({ etiqueta: f.etiqueta, valor: f.total }))}
+      />
+    </section>
   );
 }
 
