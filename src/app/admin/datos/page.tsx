@@ -26,7 +26,7 @@ import { FiDownload, FiUpload } from "@/components/iconos";
  * Esta página es la salida de emergencia —y el puente para migrar a SQL—:
  * el archivo tiene la forma que recibirá la API.
  *
- * Con SQL Server (SPEC-006) importar queda deshabilitado: reemplazar todo
+ * Con PostgreSQL (SPEC-006) importar queda deshabilitado: reemplazar todo
  * desde el navegador se saltaría el ciclo de vida que el servidor hace
  * cumplir, y el servidor lo rechazaría a medias. Un respaldo se carga en la
  * base con `db/respaldo-a-sql.ts`, que lo revisa antes.

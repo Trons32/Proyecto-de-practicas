@@ -1,8 +1,9 @@
 /**
- * Verificación de la conexión a SQL Server (SPEC-006), contra una base real.
+ * Verificación de la conexión a PostgreSQL (SPEC-006, SPEC-011), contra una base real.
  *
- *   docker compose -f db/docker-compose.yml --env-file .env.db run --rm -e MSSQL_BASE=asignacion_academica_prueba inicializar
- *   MSSQL_BASE=asignacion_academica_prueba MSSQL_CLAVE=… npx tsx src/lib/servidor/verificar-sql.ts
+ *   DATABASE_URL=postgresql://…/asignacion_academica_prueba npx prisma migrate deploy
+ *   DATABASE_URL=postgresql://…/asignacion_academica_prueba npx prisma db seed
+ *   DATABASE_URL=postgresql://…/asignacion_academica_prueba npx tsx src/lib/servidor/verificar-sql.ts
  *
  * Escribe y borra datos: se niega a correr sobre una base que no termine en
  * `_prueba`.
@@ -11,14 +12,14 @@ import { CONTRATOS, MAX_ADMINISTRATIVAS, MAX_CURSOS, MAX_DESCARGAS, REGLAS_DEDIC
 import type { Novedad } from "../novedades";
 import { cursosBase, nuevaAsignacion, nuevoCurso, nuevoDocente, nuevoEvento, type Asignacion, type Docente } from "../tipos";
 import fixture from "../__fixture.json";
-import { pool } from "./bd";
-import { CambioRechazado, guardarAsignaciones, guardarConfiguracion, guardarNovedades } from "./escribir";
+import { bd as cliente, cerrar } from "./bd";
+import { CambioRechazado, esRechazoDeLaBase, guardarAsignaciones, guardarConfiguracion, guardarNovedades } from "./escribir";
 import { aUuid } from "./ids";
 import { leerAsignaciones, leerConfiguracion, leerNovedades } from "./leer";
 
-const base = process.env.MSSQL_BASE ?? "";
+const base = new URL(process.env.DATABASE_URL ?? "postgresql://x/").pathname.slice(1);
 if (!base.endsWith("_prueba")) {
-  console.error("✗ Use una base desechable: MSSQL_BASE debe terminar en _prueba.");
+  console.error("✗ Use una base desechable: el nombre de la base en DATABASE_URL debe terminar en _prueba.");
   process.exit(1);
 }
 
@@ -99,18 +100,18 @@ const configuracion = {
 };
 
 async function principal() {
-  const bd = await pool();
+  const bd = cliente();
   // Desde cero en cada corrida. La bitácora se va en cascada; las novedades
   // no se dejan borrar (trigger), así que se apagan solo para limpiar.
-  await bd.query(`
-    DELETE FROM aa.asignacion;
-    DISABLE TRIGGER ALL ON aa.novedad_decision; DISABLE TRIGGER ALL ON aa.novedad_afectacion_docente;
-    DISABLE TRIGGER ALL ON aa.novedad_afectacion; DISABLE TRIGGER ALL ON aa.novedad_cambio; DISABLE TRIGGER ALL ON aa.novedad;
-    DELETE FROM aa.novedad_decision; DELETE FROM aa.novedad_afectacion_docente; DELETE FROM aa.novedad_afectacion;
-    DELETE FROM aa.novedad_cambio; DELETE FROM aa.novedad;
-    ENABLE TRIGGER ALL ON aa.novedad_decision; ENABLE TRIGGER ALL ON aa.novedad_afectacion_docente;
-    ENABLE TRIGGER ALL ON aa.novedad_afectacion; ENABLE TRIGGER ALL ON aa.novedad_cambio; ENABLE TRIGGER ALL ON aa.novedad;
-    DELETE FROM aa.docente; DELETE FROM aa.convocatoria;`);
+  const novedades = ["novedad_decision", "novedad_afectacion_docente", "novedad_afectacion", "novedad_cambio", "novedad"];
+  await bd.$transaction([
+    bd.$executeRawUnsafe(`DELETE FROM aa.asignacion`),
+    ...novedades.map((t) => bd.$executeRawUnsafe(`ALTER TABLE aa.${t} DISABLE TRIGGER USER`)),
+    ...novedades.map((t) => bd.$executeRawUnsafe(`DELETE FROM aa.${t}`)),
+    ...novedades.map((t) => bd.$executeRawUnsafe(`ALTER TABLE aa.${t} ENABLE TRIGGER USER`)),
+    bd.$executeRawUnsafe(`DELETE FROM aa.docente`),
+    bd.$executeRawUnsafe(`DELETE FROM aa.convocatoria`),
+  ]);
 
   // ── Configuración ───────────────────────────────────────────
   await guardarConfiguracion(configuracion);
@@ -200,11 +201,11 @@ async function principal() {
   comprobar("reapertura enlazada a su novedad", leidas[0].bitacora.at(-1)?.novedadId === novedad.id && leidas[0].estado === "en_correccion");
 
   await guardarNovedades([novedad]);
-  const decisiones = await bd.query(`SELECT COUNT(*) AS n FROM aa.novedad_decision`);
-  comprobar("reenviar una novedad no duplica decisiones", decisiones.recordset[0].n === 1, decisiones.recordset[0]);
+  const decisiones = await bd.novedad_decision.count();
+  comprobar("reenviar una novedad no duplica decisiones", decisiones === 1, decisiones);
 
-  const lineaGuardada = await bd.query(`SELECT COUNT(*) AS n FROM aa.linea_base_curso WHERE asignacion_id = '${a.id}'`);
-  comprobar("la línea base guarda todos los cursos aprobados", lineaGuardada.recordset[0].n === a.lineaBase!.cursos.length, lineaGuardada.recordset[0]);
+  const lineaGuardada = await bd.linea_base_curso.count({ where: { asignacion_id: a.id } });
+  comprobar("la línea base guarda todos los cursos aprobados", lineaGuardada === a.lineaBase!.cursos.length, lineaGuardada);
 
   // ── Dos clientes (CA-006.4) ─────────────────────────────────
   const b = { ...nuevaAsignacion({ periodo: "2026-2", facultad: "DERECHO_Y_CIENCIAS_POLÍTICAS", programa: "DERECHO" }, "OTRO"), creada: "2026-07-16T14:00:00.000Z" };
@@ -215,21 +216,42 @@ async function principal() {
   // ── Editar: quitar un docente ───────────────────────────────
   const editada = { ...reabierta, docentes: reabierta.docentes.slice(1) };
   await guardarAsignaciones([editada], []);
-  const conteo = await bd.query(`SELECT COUNT(*) AS n FROM aa.docente_asignado WHERE asignacion_id = '${a.id}'`);
-  comprobar("quitar un docente lo quita de la base", conteo.recordset[0].n === 44, conteo.recordset[0]);
-  const eventos = await bd.query(`SELECT COUNT(*) AS n FROM aa.evento_asignacion WHERE asignacion_id = '${a.id}'`);
-  comprobar("reescribir no duplica la bitácora", eventos.recordset[0].n === 4, eventos.recordset[0]);
+  const conteo = await bd.docente_asignado.count({ where: { asignacion_id: a.id } });
+  comprobar("quitar un docente lo quita de la base", conteo === 44, conteo);
+  const eventos = await bd.evento_asignacion.count({ where: { asignacion_id: a.id } });
+  comprobar("reescribir no duplica la bitácora", eventos === 4, eventos);
 
   // ── Rechazo atómico ─────────────────────────────────────────
   const mala = { ...editada, docentes: [{ ...editada.docentes[0], categoria: "NO EXISTE" }, ...editada.docentes.slice(1)] };
   let rechazada = false;
   try {
     await guardarAsignaciones([mala], []);
-  } catch {
-    rechazada = true;
+  } catch (e) {
+    // La API responde 422 solo si reconoce el rechazo como de la base.
+    rechazada = esRechazoDeLaBase(e);
+    if (!rechazada) console.error(e);
   }
-  const tras = await bd.query(`SELECT COUNT(*) AS n FROM aa.docente_asignado WHERE asignacion_id = '${a.id}'`);
-  comprobar("una cascada inválida se rechaza sin dejar nada a medias", rechazada && tras.recordset[0].n === 44, { rechazada, ...tras.recordset[0] });
+  const tras = await bd.docente_asignado.count({ where: { asignacion_id: a.id } });
+  comprobar("una cascada inválida se rechaza (422) sin dejar nada a medias", rechazada && tras === 44, { rechazada, tras });
+
+  // Un CHECK (no una FK) también debe reconocerse como dato inválido.
+  let rechazoCheck = false;
+  try {
+    await guardarAsignaciones([{ ...editada, docentes: [{ ...editada.docentes[0], evaluacionDocente: 7 }, ...editada.docentes.slice(1)] }], []);
+  } catch (e) {
+    rechazoCheck = esRechazoDeLaBase(e);
+    if (!rechazoCheck) console.error(e);
+  }
+  comprobar("un CHECK violado se reconoce como dato rechazado", rechazoCheck);
+
+  // ── Solo se añade: los triggers siguen mandando bajo Prisma ─
+  let bitacoraIntacta = false;
+  try {
+    await bd.evento_asignacion.updateMany({ where: { asignacion_id: a.id }, data: { autor: "OTRO" } });
+  } catch {
+    bitacoraIntacta = true;
+  }
+  comprobar("la bitácora no se edita", bitacoraIntacta);
 
   // ── Documento repetido en un borrador ───────────────────────
   const repetido = { ...b, docentes: [{ ...nuevoDocente(), documento: "12345678" }, { ...nuevoDocente(), documento: "12345678" }] };
@@ -267,8 +289,8 @@ async function principal() {
   // ── Ids cortos de antes de SPEC-006 ─────────────────────────
   comprobar("un id corto da siempre el mismo UUID", aUuid("k3j2h1") === aUuid("k3j2h1") && /^[0-9a-f-]{36}$/.test(aUuid("k3j2h1")));
 
-  await bd.close();
-  console.log(fallos === 0 ? "\n✓ Conexión SQL verificada." : `\n✗ ${fallos} fallos.`);
+  await cerrar();
+  console.log(fallos === 0 ? "\n✓ Conexión a PostgreSQL verificada." : `\n✗ ${fallos} fallos.`);
   process.exit(fallos === 0 ? 0 : 1);
 }
 

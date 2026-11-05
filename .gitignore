@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -45,5 +46,8 @@ next-env.d.ts
 *respaldo*.json
 asignacion-academica-*.json
 
-# usuarios reales de la aplicación (ver db/usuarios.ejemplo.sql)
-/db/usuarios.sql
+# usuarios reales de la aplicación (ver prisma/usuarios.ejemplo.json)
+/prisma/usuarios.json
+
+# cliente de Prisma: se genera con `prisma generate` (postinstall)
+/src/generated/

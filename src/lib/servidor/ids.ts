@@ -1,5 +1,5 @@
 /**
- * La base guarda los ids como UNIQUEIDENTIFIER. Los datos creados antes de
+ * La base guarda los ids como UUID. Los datos creados antes de
  * SPEC-006 en un contexto sin `crypto.randomUUID` traen ids cortos; se
  * convierten a un UUID derivado del id original, siempre el mismo, para que
  * cada referencia a ese id siga apuntando a la misma fila en cada guardado.

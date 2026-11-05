@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // El driver de SQL Server usa módulos nativos de Node: se carga tal cual
+  // El driver de PostgreSQL usa módulos de Node (net, tls): se carga tal cual
   // en el servidor en vez de empaquetarse.
-  serverExternalPackages: ["mssql"],
+  serverExternalPackages: ["pg", "@prisma/adapter-pg"],
 };
 
 export default nextConfig;

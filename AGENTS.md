@@ -16,7 +16,7 @@ su programa, reparte horas entre cursos, descargas y actividades
 administrativas, y el sistema le dice si la carga cuadra con la dedicación.
 
 Next.js 16 · App Router · React 19 · Tailwind v4 · Zustand. Por defecto todo
-vive en el navegador; con `NEXT_PUBLIC_ALMACEN=sql` persiste en SQL Server
+vive en el navegador; con `NEXT_PUBLIC_ALMACEN=sql` persiste en PostgreSQL vía Prisma (SPEC-011)
 (SPEC-006), con sesión en el servidor (SPEC-008).
 
 ---
@@ -267,7 +267,7 @@ lib/verificar-respaldo.ts    prueba del respaldo JSON
 lib/verificar-reportes.ts    prueba del cuadro resumen contra el motor
 lib/datos/almacen.ts         dónde persisten los stores ← punto de cambio a SQL
 lib/datos/respaldo.ts        formato y validación del respaldo ← PURO
-lib/servidor/*       conexión, lectura y escritura en SQL Server ← SOLO SERVIDOR
+lib/servidor/*       conexión (Prisma), lectura y escritura en PostgreSQL ← SOLO SERVIDOR
 lib/servidor/verificar-sql.ts   prueba de ida y vuelta contra la base
 app/api/estado/[clave]       la API de estado (exige la cookie de sesión)
 app/api/sesion               iniciar y cerrar sesión: cookie httpOnly firmada
@@ -275,7 +275,12 @@ lib/servidor/sesion.ts       firma de la cookie y verificarCredenciales() ← AQ
 lib/servidor/aldea.ts        la API de credenciales + aa.usuario (SPEC-010)
 app/api/salud                sonda del despliegue: ¿hay base y secreto?
 DESPLIEGUE.md                paso a paso para producción
-db/                  esquema SQL Server, semilla y migración (ver db/README.md)
+prisma/migrations/   tablas, triggers, CHECK y permisos ← SQL A MANO (ver db/README.md)
+prisma/seed.ts       catálogos (desde catalogos.ts) y usuarios iniciales
+prisma/schema.prisma modelo de Prisma ← reflejo de la base con `prisma db pull`, NO EDITAR A MANO
+db/                  respaldo-a-sql.ts, prueba-esquema.sql, generar-historicos.ts
+.env.example         todas las variables; la base es DATABASE_URL
+src/generated/prisma cliente de Prisma ← generado en postinstall, fuera de git
 specs/               especificaciones (Spec-Driven Development)
 lib/auth/sesion.ts   usuarios de prueba, roles y autenticar() del navegador
 lib/stores/*         estado persistido
@@ -313,7 +318,7 @@ npx tsx src/lib/verificar-respaldo.ts    # si tocaste lib/datos/ o los tipos
 npx tsx src/lib/verificar-reportes.ts    # si tocaste lib/reportes.ts, exportar-*.ts o el cálculo
 npx tsx src/lib/verificar-transiciones.ts   # si tocaste el ciclo de vida o el store de asignaciones
 npx tsx src/lib/servidor/verificar-sesion.ts   # si tocaste la sesión o lib/auth/
-MSSQL_BASE=asignacion_academica_prueba MSSQL_CLAVE=… npx tsx src/lib/servidor/verificar-sql.ts   # si tocaste lib/servidor/ o los tipos
+DATABASE_URL=postgresql://…/asignacion_academica_prueba npx tsx src/lib/servidor/verificar-sql.ts   # si tocaste lib/servidor/ o los tipos
 ```
 
 Una funcionalidad nueva empieza por su `specs/NNN-nombre/spec.md`.
@@ -335,17 +340,21 @@ Y pruébalo **con los dos roles** (`admin@cecar.edu.co` / `admin123`,
   o editar la bitácora: deja el expediente mintiendo.
 - Permitir que se edite una asignación ya entregada. Si hace falta reabrirla,
   se reabre por el camino previsto (`reabrirPorParametros`), que deja rastro.
-- Traer un ORM u otro motor de base de datos. La base es SQL Server (la de la
-  universidad) y se habla con `mssql` desde `lib/servidor/`.
+- Traer otro ORM u otro motor de base de datos. La base es PostgreSQL y se
+  habla con Prisma desde `lib/servidor/` (SPEC-011).
+- Usar `prisma db push`, o generar una migración sin revisar su SQL. Las
+  migraciones llevan triggers, CHECK y permisos que Prisma no expresa: se
+  crean con `migrate dev --create-only`, se completan a mano y luego
+  `prisma db pull` actualiza `schema.prisma`.
 - Escribir desde `/api/estado` sin pasar por `usuarioActual()`, o confiar en
   el `rolAutor` que manda el navegador: el rol sale de la cookie.
 - Cambiar cómo se validan las credenciales fuera de `verificarCredenciales()`
   (`lib/servidor/sesion.ts`): es el único punto donde entra Aldea.
 - Cambiar la forma de `Asignacion`, `Docente` o `Novedad` sin revisar
-  `db/esquema.sql` y `db/respaldo-a-sql.ts`: la migración dejaría de cuadrar.
-- Si cambia `catalogos.ts`, regenerar la semilla: `npx tsx db/generar-semilla.ts`.
+  una migración nueva en `prisma/migrations/` y `db/respaldo-a-sql.ts`: la migración de datos dejaría de cuadrar.
+- Si cambia `catalogos.ts`, volver a correr `npx prisma db seed` (solo agrega lo que falta).
 - Editar `lib/historicos.ts` a mano. Se regenera desde el consolidado con
   `npx tsx db/generar-historicos.ts "<consolidado.xlsx>"`; sus cifras dudosas
   se conservan a propósito (spec 009).
-- Cambiar `esquema.sql` sin escribir su migración en `db/migraciones/`: las
-  bases que ya existen no se recrean.
+- Editar una migración ya aplicada en `prisma/migrations/`: las bases que
+  ya existen no la vuelven a correr. Los cambios van en una migración nueva.

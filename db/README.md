@@ -1,128 +1,90 @@
-# Base de datos · SQL Server
+# Base de datos · PostgreSQL + Prisma
 
-La base de la aplicación cuando corre con `ALMACEN=sql` (SPEC-006). Para
-ponerla en producción, ver [`DESPLIEGUE.md`](../DESPLIEGUE.md).
+La base de la aplicación cuando corre con `ALMACEN=sql` (SPEC-006, SPEC-011).
+Para ponerla en producción (la VPS), ver [`DESPLIEGUE.md`](../DESPLIEGUE.md).
 
-Requiere SQL Server 2016 o posterior. Probado en SQL Server 2022.
+Requiere PostgreSQL 13 o posterior. La conexión es una sola variable,
+`DATABASE_URL`, en `.env` (copiar de `.env.example`).
 
-| Archivo               | Qué es                                                          |
-| --------------------- | --------------------------------------------------------------- |
-| `esquema.sql`         | tablas, restricciones y triggers (esquema `aa`)                 |
-| `generar-semilla.ts`  | genera `semilla.sql` desde `src/lib/catalogos.ts`               |
-| `semilla.sql`         | catálogos, cascada, reglas y roles del formato — **generado**   |
-| `respaldo-a-sql.ts`   | convierte un respaldo JSON en un script de migración            |
-| `prueba-esquema.sql`  | comprueba que la base hace cumplir las reglas                   |
-| `crear-usuario-app.sql` | el login de mínimo privilegio para la aplicación (SPEC-010)   |
-| `usuarios.ejemplo.sql`  | quién entra y con qué rol; se copia a `usuarios.sql`          |
-| `env.produccion.ejemplo` | variables del servidor de producción                         |
+## Dónde está cada cosa
 
-## Base local con Docker
+| Archivo                                   | Qué es                                                     |
+| ----------------------------------------- | ---------------------------------------------------------- |
+| `prisma/migrations/`                      | las tablas, triggers, CHECK y permisos — SQL escrito a mano |
+| `prisma/seed.ts`                          | catálogos del formato (desde `catalogos.ts`) y usuarios     |
+| `prisma/usuarios.ejemplo.json`            | quién entra y con qué rol; se copia a `usuarios.json`       |
+| `prisma/schema.prisma`                    | el modelo de Prisma — reflejo de la base con `prisma db pull` |
+| `db/respaldo-a-sql.ts`                    | convierte un respaldo JSON en un script de migración        |
+| `db/prueba-esquema.sql`                   | comprueba que la base hace cumplir las reglas               |
+| `db/generar-historicos.ts`                | regenera `src/lib/historicos.ts` desde el consolidado       |
 
-Para desarrollar no hace falta instalar SQL Server: el compose levanta el
-mismo motor que usa la universidad y carga esquema y semilla solo la primera
-vez.
+## Crear o actualizar la base
 
 ```bash
-cp db/env.db.ejemplo .env.db        # y poner una clave propia
-docker compose -f db/docker-compose.yml --env-file .env.db up -d
+npx prisma migrate deploy   # crea las tablas o aplica las migraciones nuevas
+npx prisma db seed          # catálogos y usuarios; se puede repetir
 ```
 
-Queda en `localhost,1433`, base `asignacion_academica`, usuario `sa`. Los
-datos viven en el volumen `aa-datos`: `down` los conserva, `down -v` los
-borra y el siguiente `up` recrea la base desde cero.
+El seed solo agrega lo que falta: no pisa reglas, límites ni roles, que
+después de instalar los cambia el administrador en `/admin/parametros` (y
+cada cambio queda en una novedad). Los usuarios de `prisma/usuarios.json` sí
+se actualizan.
 
-### Conectar la aplicación (SPEC-006)
+Si cambia `catalogos.ts` con algo nuevo (un programa, un rol), basta volver
+a correr el seed.
+
+## Cambiar el esquema
+
+Las migraciones llevan lo que Prisma no expresa —triggers de "solo se
+añade", CHECK, el rol de la aplicación—, así que:
+
+1. `npx prisma migrate dev --create-only --name <cambio>` y completar el SQL a mano.
+2. `npx prisma migrate dev` para aplicarla.
+3. `npx prisma db pull` para que `schema.prisma` lo refleje, y `npx prisma generate`.
+
+**Nunca `prisma db push`**: crearía las tablas sin esas reglas.
+
+## Verificar contra una base desechable
+
+El nombre de la base tiene que terminar en `_prueba`:
 
 ```bash
-cp db/env.local.ejemplo .env.local   # y poner la clave de .env.db en MSSQL_CLAVE
-npm run dev
+export DATABASE_URL=postgresql://postgres:<clave>@localhost:5432/asignacion_academica_prueba
+npx prisma migrate deploy && npx prisma db seed
+npx tsx src/lib/servidor/verificar-sql.ts
+psql "$DATABASE_URL" -f db/prueba-esquema.sql
 ```
 
-Con `NEXT_PUBLIC_ALMACEN=sql` los stores leen y escriben por
-`/api/estado`; sin ella todo sigue en localStorage. La API exige la cookie
-de sesión que deja `/api/sesion` (SPEC-008), firmada con `SESION_SECRETO`.
-En desarrollo se entra con los usuarios de prueba; en producción, con la
-API de credenciales y `aa.usuario` (SPEC-010).
-
-Para verificarla, en una base desechable:
-
-```bash
-docker compose -f db/docker-compose.yml --env-file .env.db run --rm -e MSSQL_BASE=asignacion_academica_prueba inicializar
-MSSQL_BASE=asignacion_academica_prueba MSSQL_CLAVE=<clave> npx tsx src/lib/servidor/verificar-sql.ts
-```
-
-## Bases que ya existen: `db/migraciones/`
-
-`esquema.sql` crea una base nueva. Una base ya creada se pone al día con las
-migraciones, en orden; cada una es idempotente:
-
-```bash
-sqlcmd -S <servidor> -E -C -b -I -f 65001 -d <base> -i db/migraciones/001-linea-base.sql
-```
-
-## Históricos del consolidado
-
-`src/lib/historicos.ts` trae las cifras de 2022-1 a 2025-2 de la hoja
-COMPARATIVO ESTADÍSTICO. Se generan, no se editan:
-
-```bash
-npx tsx db/generar-historicos.ts "../CONSOLIDADO ASIGNACIÓN ACADÉMICA 2025-para revisión.xlsx"
-```
-
-## Crear la base
-
-```bash
-sqlcmd -S <servidor> -E -C -b -f 65001 -d <base> -i db/esquema.sql
-sqlcmd -S <servidor> -E -C -b -f 65001 -d <base> -i db/semilla.sql
-sqlcmd -S <servidor> -E -C -b -f 65001 -d <base> -i db/prueba-esquema.sql   # opcional, en una base desechable
-```
-
-`-f 65001` es obligatorio: los catálogos llevan tildes (`TÉRMINO_FIJO`,
-`CATEGORÍA ÚNICA`) y sin UTF-8 las claves no coinciden.
-
-Si cambia `catalogos.ts`, se regenera la semilla:
-
-```bash
-npx tsx db/generar-semilla.ts
-```
-
-## Migrar lo registrado en la aplicación
+## Migrar lo registrado (navegador o la antigua base SQL Server)
 
 1. En la aplicación, como administrador: **Respaldo → Descargar respaldo**.
-2. Generar el script:
-   ```bash
-   npx tsx db/respaldo-a-sql.ts asignacion-academica-2026-09-30.json db/migracion.sql
-   ```
-   Si el respaldo trae algo que la base rechazaría (un programa fuera del
-   catálogo, una combinación contrato-dedicación-categoría inválida, un rol
-   eliminado que sigue en uso), se detiene y dice qué corregir en la
-   aplicación.
-3. Ejecutarlo sobre la base recién creada:
-   ```bash
-   sqlcmd -S <servidor> -E -C -b -f 65001 -d <base> -i db/migracion.sql
-   ```
-   Va en una transacción: si algo falla, no queda nada a medias.
+2. `npx tsx db/respaldo-a-sql.ts asignacion-academica-2026-09-30.json db/migracion.sql`
+   — si algo no cabría en la base (programa fuera del catálogo, combinación
+   inválida, rol eliminado en uso), se detiene y dice qué corregir.
+3. Sobre la base recién creada (migrate deploy + seed):
+   `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/migracion.sql`
+   — va en una transacción: si algo falla, no queda nada a medias.
 
 **El script y el respaldo llevan documentos y nombres reales de docentes.**
-Están excluidos de git (`.gitignore`); no los suba ni los comparta.
+Están excluidos de git; no los suba ni los comparta.
 
 ## Decisiones del esquema
 
 - **Los borradores caben.** Casi todo en `docente_asignado`, `curso_asignado`
   y `actividad` admite NULL: la base impone la coherencia de lo que está
-  lleno, y la completitud la exige el motor de la aplicación antes de
-  enviar.
+  lleno, y la completitud la exige el motor antes de enviar.
 - **La cascada de SPEC-001 es una FK** compuesta hacia
-  `contrato_dedicacion_categoria`. SQL Server no la evalúa si alguna columna
-  es NULL, que es justo lo que necesita un borrador.
+  `contrato_dedicacion_categoria`. Con `MATCH SIMPLE` no se evalúa si alguna
+  columna es NULL, que es justo lo que necesita un borrador.
 - **Bitácora y novedades solo admiten INSERT**, por trigger y por permisos.
   La bitácora sí se borra en cascada con su asignación.
-- **Los roles no se borran**: se marcan `vigente = 0`, porque las
-  asignaciones cerradas los siguen referenciando.
-- **El motor de cálculo no está aquí.** Sigue en `src/lib/calculo.ts`,
-  verificado contra el formato oficial.
+- **El orden de inserción lo da `secuencia`** en la bitácora y en la foto de impacto.
+- **Las comparaciones distinguen mayúsculas**: la aplicación usa los valores
+  exactos del catálogo y guarda el correo en minúsculas.
+- **Los roles no se borran**: se marcan `vigente = FALSE`.
+- **El motor de cálculo no está aquí.** Sigue en `src/lib/calculo.ts`.
 
 ## Pendiente con el cliente
 
-- ¿Una sola asignación por programa y periodo? Si es así, activar
-  `uq_asignacion_programa_periodo` (comentada en `esquema.sql`).
+- ¿Una sola asignación por programa y periodo? Si es así, una migración con
+  `UNIQUE (programa_id, periodo)` en `aa.asignacion`.

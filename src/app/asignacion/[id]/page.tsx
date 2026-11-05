@@ -102,7 +102,7 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
     setConfirmandoEnvio(false);
     if (!usuario) return;
 
-    // Aquí irá el POST al API route que persiste en SQL Server.
+    // Aquí irá el POST al API route que persiste en PostgreSQL.
     enviar(asignacion.id, { nombres: usuario.nombres, rol: usuario.rol });
     sileo.success({
       title: corrigiendo ? "Correcciones enviadas" : "Asignación enviada",

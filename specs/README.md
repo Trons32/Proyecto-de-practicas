@@ -14,15 +14,16 @@ NNN-nombre/spec.md    problema, reglas, criterios de aceptación (Dado / Cuando 
 | ID  | Especificación                           | Prioridad | Estado                          |
 | --- | ---------------------------------------- | --------- | ------------------------------- |
 | 001 | Categoría según contrato y dedicación    | P0        | Implementada                    |
-| 002 | Capa de datos preparada para SQL         | P1        | Implementada (SQL Server)       |
+| 002 | Capa de datos preparada para SQL         | P1        | Implementada (PostgreSQL desde 011) |
 | 003 | Página de Novedades                      | P1        | Implementada                    |
 | 004 | Reportes                                 | P2        | Borrador, a validar con cliente |
 | 005 | Observaciones, novedades y reportes       | P1        | Parcial: A, C y D implementadas; B en borrador |
-| 006 | Conexión a SQL Server                    | P1        | Implementada (desarrollo, sin autenticación) |
+| 006 | Conexión a la base (SQL Server → PostgreSQL en 011) | P1        | Implementada (desarrollo, sin autenticación) |
 | 007 | El servidor hace cumplir el ciclo de vida | P0        | Implementada                    |
 | 008 | Sesión en el servidor                    | P0        | Implementada (usuarios de prueba; falta Aldea) |
 | 009 | Gráficas, comparativo y proyección       | P1        | Implementada; preguntas abiertas al cliente |
 | 010 | Despliegue y credenciales por API       | P0        | Implementada; falta el contrato real de la API |
+| 011 | Migración a PostgreSQL con Prisma       | P0        | Implementada; falta probar en la VPS |
 
 ## Definición de terminado
 
@@ -33,10 +34,10 @@ NNN-nombre/spec.md    problema, reglas, criterios de aceptación (Dado / Cuando 
 - `npx tsx src/lib/verificar-novedades.ts` pasa si se tocó `lib/novedades.ts`.
 - `npx tsx src/lib/verificar-respaldo.ts` pasa si se tocó `lib/datos/` o la forma de los tipos.
 - `npx tsx src/lib/verificar-reportes.ts` pasa si se tocó `lib/reportes.ts`, `lib/exportar-*.ts` o el cálculo.
-- `db/prueba-esquema.sql` pasa si se tocó `db/esquema.sql`.
+- `db/prueba-esquema.sql` pasa si se tocó `prisma/migrations/` (y `prisma db pull` dejó `schema.prisma` al día).
 - `npx tsx src/lib/verificar-transiciones.ts` pasa si se tocó `lib/transiciones.ts`, el store de asignaciones o el ciclo de vida.
 - `npx tsx src/lib/servidor/verificar-sesion.ts` pasa si se tocó la sesión o `lib/auth/`.
-- `src/lib/servidor/verificar-sql.ts` pasa si se tocó `lib/servidor/`, `db/esquema.sql` o la forma de los tipos.
+- `src/lib/servidor/verificar-sql.ts` pasa si se tocó `lib/servidor/`, `prisma/` o la forma de los tipos.
 - Probado con los dos roles.
 - Si cambia la forma del estado persistido: se subió `version` y se escribió
   el `migrate` del store.

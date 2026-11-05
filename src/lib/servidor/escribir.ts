@@ -6,31 +6,31 @@
  * ids eliminados, las novedades nuevas o con decisiones nuevas. Lo que no
  * viene no se toca, para que un cliente no borre lo que otro creó.
  */
+import { Prisma } from "@/generated/prisma/client";
 import type { ReglaDedicacion, Rol } from "../catalogos";
 import type { Convocatoria } from "../convocatoria";
 import type { Limites, Novedad } from "../novedades";
 import type { Asignacion } from "../tipos";
-import { ejecutor, pool, sql, type Ejecutar } from "./bd";
+import { bd, type Cliente } from "./bd";
 import { revisarBorrado, revisarGuardado, type Actor } from "../transiciones";
 import { aUuid } from "./ids";
 import { leerAsignaciones } from "./leer";
 
-async function enTransaccion<T>(trabajo: (ejecutar: Ejecutar) => Promise<T>): Promise<T> {
-  const tx = new sql.Transaction(await pool());
-  await tx.begin();
-  const ejecutar = ejecutor(() => new sql.Request(tx));
-  try {
-    const resultado = await trabajo(ejecutar);
-    await tx.commit();
-    return resultado;
-  } catch (e) {
-    await tx.rollback().catch(() => {});
-    throw e;
-  }
-}
+/** La cadena vacía de la aplicación es "sin dato": NULL. */
+const t = (v: string | null | undefined) => (v === "" || v === undefined ? null : v);
+const f = (v: string | null | undefined) => (v ? new Date(v) : null);
+const num = (v: number | null | undefined) => (v === undefined || (typeof v === "number" && Number.isNaN(v)) ? null : v);
 
-const asegurarPeriodo = (ejecutar: Ejecutar, periodo: string) =>
-  ejecutar(`IF NOT EXISTS (SELECT 1 FROM aa.periodo WHERE codigo = ?) INSERT INTO aa.periodo (codigo) VALUES (?)`, periodo, periodo);
+/**
+ * 45 docentes con sus cursos son cientos de filas: el plazo predeterminado
+ * de Prisma (5 s) se queda corto en un servidor lento. La espera cubre el
+ * caso de dos administradores que guardan la misma asignación a la vez.
+ */
+const enTransaccion = <T>(trabajo: (tx: Cliente) => Promise<T>) =>
+  bd().$transaction(trabajo, { timeout: 60_000, maxWait: 15_000 });
+
+const asegurarPeriodo = (tx: Cliente, periodo: string) =>
+  tx.periodo.createMany({ data: [{ codigo: periodo }], skipDuplicates: true });
 
 /** Un error que el usuario puede corregir en la aplicación, no un fallo del servidor. */
 export class DatoRechazado extends Error {}
@@ -42,25 +42,37 @@ export class DatoRechazado extends Error {}
  */
 export class CambioRechazado extends Error {}
 
+/**
+ * ¿La base rechazó un dato (cascada inválida, valor fuera de rango, clave
+ * repetida)? Entonces el dato está mal, no el servidor. Prisma traduce FK,
+ * UNIQUE y longitud a sus códigos P20xx; un CHECK le llega como error del
+ * motor, con el SQLSTATE de clase 22 o 23 de PostgreSQL.
+ */
+export function esRechazoDeLaBase(e: unknown): boolean {
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    if (["P2000", "P2002", "P2003", "P2004", "P2011", "P2020"].includes(e.code)) return true;
+  }
+  const texto = JSON.stringify(e, Object.getOwnPropertyNames(e ?? {}));
+  return /"(originalCode|code)":"2[23][0-9A-Z]{3}"/.test(texto) || /violates check constraint/.test(texto);
+}
+
 export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: string[], actor?: Actor) {
-  await enTransaccion(async (ejecutar) => {
+  await enTransaccion(async (tx) => {
     // Bloqueadas hasta el commit: dos administradores que aprueban y
     // devuelven a la vez se validan uno después del otro, no los dos contra
-    // el mismo estado viejo.
+    // el mismo estado viejo. En READ COMMITTED la lectura siguiente ya ve lo
+    // que el otro confirmó. Dos clientes que crean el mismo id nuevo no
+    // tienen fila que bloquear: ahí los separa la clave primaria.
     const ids = [...asignaciones.map((a) => aUuid(a.id)), ...borrados.map(aUuid)];
-    await ejecutar(
-      `SELECT id FROM aa.asignacion WITH (UPDLOCK, HOLDLOCK)
-       WHERE id IN (SELECT CAST(value AS UNIQUEIDENTIFIER) FROM OPENJSON(?))`,
-      JSON.stringify(ids)
-    );
+    await tx.$queryRaw`SELECT id FROM aa.asignacion WHERE id = ANY(${ids}::uuid[]) ORDER BY id FOR UPDATE`;
     const guardadas = new Map(
-      (await leerAsignaciones({ ids, ejecutar })).asignaciones.map((a) => [a.id, a])
+      (await leerAsignaciones({ ids, cliente: tx })).asignaciones.map((a) => [a.id, a])
     );
 
     for (const idBorrado of borrados) {
       const problema = revisarBorrado(guardadas.get(aUuid(idBorrado)));
       if (problema) throw new CambioRechazado(problema);
-      await ejecutar(`DELETE FROM aa.asignacion WHERE id = ?`, aUuid(idBorrado));
+      await tx.asignacion.delete({ where: { id: aUuid(idBorrado) } });
     }
     for (const a of asignaciones) {
       const problema = revisarGuardado(guardadas.get(aUuid(a.id)), a, actor);
@@ -68,30 +80,26 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
     }
 
     for (const a of asignaciones) {
-      const programa = await ejecutar(`SELECT id FROM aa.programa WHERE nombre = ?`, a.programa);
-      if (!programa.recordset[0]) throw new DatoRechazado(`El programa «${a.programa}» no está en el catálogo.`);
-      const programaId = programa.recordset[0].id;
+      const programa = await tx.programa.findUnique({ where: { nombre: a.programa }, select: { id: true } });
+      if (!programa) throw new DatoRechazado(`El programa «${a.programa}» no está en el catálogo.`);
       const asigId = aUuid(a.id);
 
-      await asegurarPeriodo(ejecutar, a.periodo);
-      await ejecutar(
-        `MERGE aa.asignacion AS t
-         USING (SELECT ? AS id) AS s ON t.id = s.id
-         WHEN MATCHED THEN UPDATE SET periodo = ?, programa_id = ?, estado = ?, version = ?, plazo_correccion = ?, creada = ?, actualizada = ?
-         WHEN NOT MATCHED THEN INSERT (id, periodo, programa_id, estado, version, plazo_correccion, creada, actualizada)
-           VALUES (s.id, ?, ?, ?, ?, ?, ?, ?);`,
-        asigId,
-        ...Array(2).fill([
-          a.periodo, programaId, a.estado, a.version,
-          // Fuera de en_correccion la aplicación ignora el plazo; la base lo prohíbe.
-          a.estado === "en_correccion" ? a.plazoCorreccion : null,
-          a.creada, a.actualizada,
-        ]).flat()
-      );
+      await asegurarPeriodo(tx, a.periodo);
+      const datos = {
+        periodo: a.periodo,
+        programa_id: programa.id,
+        estado: a.estado,
+        version: a.version,
+        // Fuera de en_correccion la aplicación ignora el plazo; la base lo prohíbe.
+        plazo_correccion: a.estado === "en_correccion" ? f(a.plazoCorreccion) : null,
+        creada: new Date(a.creada),
+        actualizada: new Date(a.actualizada),
+      };
+      await tx.asignacion.upsert({ where: { id: asigId }, update: datos, create: { id: asigId, ...datos } });
 
       // Los docentes son parte de la asignación: se reescriben enteros, y la
       // cascada se lleva sus cursos y actividades.
-      await ejecutar(`DELETE FROM aa.docente_asignado WHERE asignacion_id = ?`, asigId);
+      await tx.docente_asignado.deleteMany({ where: { asignacion_id: asigId } });
 
       const enlazados = new Set<string>();
       for (const [i, d] of a.docentes.entries()) {
@@ -101,78 +109,79 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
         // segundo queda sin enlazar hasta que el coordinador lo corrija.
         if (/^\d{6,15}$/.test(doc) && !enlazados.has(doc)) {
           enlazados.add(doc);
-          const persona = await ejecutar(
-            `MERGE aa.docente AS t USING (SELECT ? AS documento) AS s ON t.documento = s.documento
-             WHEN MATCHED THEN UPDATE SET nombres = ?
-             WHEN NOT MATCHED THEN INSERT (documento, nombres) VALUES (s.documento, ?)
-             OUTPUT inserted.id;`,
-            doc, d.nombres.trim() || "—", d.nombres.trim() || "—"
-          );
-          personaId = String(persona.recordset[0].id);
+          const nombres = d.nombres.trim() || "—";
+          const persona = await tx.docente.upsert({
+            where: { documento: doc },
+            update: { nombres },
+            create: { documento: doc, nombres },
+            select: { id: true },
+          });
+          personaId = persona.id;
         }
 
         const daId = aUuid(d.id);
-        await ejecutar(
-          `INSERT INTO aa.docente_asignado (id, asignacion_id, docente_id, orden, documento, nombres, nivel_formacion,
-             perfil_profesional, categoria_minciencias, activo_sector_externo, sector_ejerce, tipo_contrato, dedicacion,
-             categoria, sede, evaluacion_docente, observaciones, preparacion, atencion, comunidades)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          daId, asigId, personaId, i + 1, doc, d.nombres, d.nivelFormacion, d.perfilProfesional,
-          d.categoriaMinciencias, d.activoSectorExterno, d.sectorEjerce, d.tipoContrato, d.dedicacion,
-          d.categoria, d.sede, d.evaluacionDocente, d.observaciones, d.preparacion, d.atencion, d.comunidades
-        );
+        await tx.docente_asignado.create({
+          data: {
+            id: daId, asignacion_id: asigId, docente_id: personaId, orden: i + 1,
+            documento: t(doc), nombres: t(d.nombres), nivel_formacion: t(d.nivelFormacion),
+            perfil_profesional: t(d.perfilProfesional), categoria_minciencias: t(d.categoriaMinciencias),
+            activo_sector_externo: t(d.activoSectorExterno), sector_ejerce: t(d.sectorEjerce),
+            tipo_contrato: t(d.tipoContrato), dedicacion: t(d.dedicacion), categoria: t(d.categoria),
+            sede: t(d.sede), evaluacion_docente: num(d.evaluacionDocente), observaciones: t(d.observaciones),
+            preparacion: d.preparacion, atencion: d.atencion, comunidades: d.comunidades,
+          },
+        });
 
-        for (const [j, k] of d.cursos.entries()) {
-          await ejecutar(
-            `INSERT INTO aa.curso_asignado (id, docente_asignado_id, orden, codigo_programa, nombre_programa, codigo_pensum,
-               codigo_curso, nombre_curso, semestre, grupo, jornada, intensidad_horaria, creditos, estudiantes, modalidad)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            aUuid(k.id), daId, j + 1, k.codigoPrograma, k.nombrePrograma, k.codigoPensum, k.codigoCurso,
-            k.nombreCurso, k.semestre, k.grupo, k.jornada, k.intensidadHoraria, k.creditos, k.estudiantes, k.modalidad
-          );
-        }
+        await tx.curso_asignado.createMany({
+          data: d.cursos.map((k, j) => ({
+            id: aUuid(k.id), docente_asignado_id: daId, orden: j + 1,
+            codigo_programa: t(k.codigoPrograma), nombre_programa: t(k.nombrePrograma),
+            codigo_pensum: t(k.codigoPensum), codigo_curso: t(k.codigoCurso), nombre_curso: t(k.nombreCurso),
+            semestre: num(k.semestre), grupo: t(k.grupo), jornada: t(k.jornada),
+            intensidad_horaria: num(k.intensidadHoraria), creditos: num(k.creditos),
+            estudiantes: num(k.estudiantes), modalidad: t(k.modalidad),
+          })),
+        });
 
         const actividades = [
           ...d.descargas.map((x) => ({ ...x, clase: "DESCARGA" })),
           ...d.administrativas.map((x) => ({ ...x, clase: "ADMINISTRATIVA" })),
         ];
-        for (const [j, x] of actividades.entries()) {
-          await ejecutar(
-            `INSERT INTO aa.actividad (id, docente_asignado_id, clase, orden, rol_id, horas) VALUES (?, ?, ?, ?, ?, ?)`,
-            aUuid(x.id), daId, x.clase, j + 1, x.rolId, x.horas
-          );
-        }
+        await tx.actividad.createMany({
+          data: actividades.map((x, j) => ({
+            id: aUuid(x.id), docente_asignado_id: daId, clase: x.clase, orden: j + 1, rol_id: x.rolId, horas: x.horas,
+          })),
+        });
       }
 
-      // La bitácora solo crece: se insertan los eventos que la base no tiene.
-      for (const e of a.bitacora) {
-        await ejecutar(
-          `IF NOT EXISTS (SELECT 1 FROM aa.evento_asignacion WHERE id = ?)
-           INSERT INTO aa.evento_asignacion (id, asignacion_id, tipo, fecha, autor, rol_autor, nota, plazo, version, novedad_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          aUuid(e.id), aUuid(e.id), asigId, e.tipo, e.fecha, e.autor, e.rolAutor, e.nota, e.plazo, e.version,
-          e.novedadId ? aUuid(e.novedadId) : null
-        );
-      }
+      // La bitácora solo crece: se insertan los eventos que la base no tiene
+      // (skipDuplicates es ON CONFLICT DO NOTHING; nunca un UPDATE).
+      await tx.evento_asignacion.createMany({
+        data: a.bitacora.map((e) => ({
+          id: aUuid(e.id), asignacion_id: asigId, tipo: e.tipo, fecha: new Date(e.fecha), autor: e.autor,
+          rol_autor: e.rolAutor, nota: t(e.nota), plazo: f(e.plazo), version: e.version ?? null,
+          novedad_id: e.novedadId ? aUuid(e.novedadId) : null,
+        })),
+        skipDuplicates: true,
+      });
 
       // La línea base se escribe una sola vez: `transiciones.ts` ya
       // comprobó que no cambió, y la tabla no admite UPDATE.
       if (a.lineaBase) {
-        const yaEsta = await ejecutar(`SELECT linea_base_fecha FROM aa.asignacion WHERE id = ?`, asigId);
-        if (!yaEsta.recordset[0]?.linea_base_fecha) {
-          await ejecutar(
-            `UPDATE aa.asignacion SET linea_base_fecha = ?, linea_base_version = ? WHERE id = ?`,
-            a.lineaBase.fecha, a.lineaBase.version, asigId
-          );
-          for (const [i, k] of a.lineaBase.cursos.entries()) {
-            await ejecutar(
-              `INSERT INTO aa.linea_base_curso (asignacion_id, orden, curso_id, docente_id, docente, codigo_curso,
-                 nombre_curso, semestre, grupo, intensidad_horaria, estudiantes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              asigId, i + 1, aUuid(k.id), aUuid(k.docenteId), k.docente, k.codigoCurso, k.nombreCurso,
-              k.semestre, k.grupo, k.intensidadHoraria, k.estudiantes
-            );
-          }
+        const yaEsta = await tx.asignacion.findUnique({ where: { id: asigId }, select: { linea_base_fecha: true } });
+        if (!yaEsta?.linea_base_fecha) {
+          await tx.asignacion.update({
+            where: { id: asigId },
+            data: { linea_base_fecha: new Date(a.lineaBase.fecha), linea_base_version: a.lineaBase.version },
+          });
+          await tx.linea_base_curso.createMany({
+            data: a.lineaBase.cursos.map((k, i) => ({
+              asignacion_id: asigId, orden: i + 1, curso_id: aUuid(k.id), docente_id: aUuid(k.docenteId),
+              docente: t(k.docente), codigo_curso: t(k.codigoCurso), nombre_curso: t(k.nombreCurso),
+              semestre: num(k.semestre), grupo: t(k.grupo), intensidad_horaria: num(k.intensidadHoraria),
+              estudiantes: num(k.estudiantes),
+            })),
+          });
         }
       }
     }
@@ -185,86 +194,86 @@ export async function guardarConfiguracion(c: {
   limites: Limites;
   convocatorias: Record<string, Convocatoria>;
 }) {
-  await enTransaccion(async (ejecutar) => {
+  await enTransaccion(async (tx) => {
     for (const [dedicacion, g] of Object.entries(c.reglas)) {
-      await ejecutar(
-        `UPDATE aa.regla_dedicacion SET max_horas = ?, preparacion = ?, atencion = ?, comunidades = ? WHERE dedicacion = ?`,
-        g.maxHoras, g.preparacion, g.atencion, g.comunidades, dedicacion
-      );
+      await tx.regla_dedicacion.updateMany({
+        where: { dedicacion },
+        data: { max_horas: g.maxHoras, preparacion: g.preparacion, atencion: g.atencion, comunidades: g.comunidades },
+      });
     }
-    await ejecutar(
-      `UPDATE aa.limite SET max_cursos = ?, max_descargas = ?, max_administrativas = ? WHERE id = 1`,
-      c.limites.maxCursos, c.limites.maxDescargas, c.limites.maxAdministrativas
-    );
+    await tx.limite.update({
+      where: { id: 1 },
+      data: {
+        max_cursos: c.limites.maxCursos,
+        max_descargas: c.limites.maxDescargas,
+        max_administrativas: c.limites.maxAdministrativas,
+      },
+    });
 
     // Los roles que la aplicación quitó no se borran: las asignaciones
     // cerradas los siguen referenciando. Se marcan no vigentes antes del
-    // MERGE para que un nombre liberado pueda reutilizarse sin chocar.
-    await ejecutar(`UPDATE aa.rol SET vigente = 0`);
+    // upsert para que un nombre liberado pueda reutilizarse sin chocar.
+    await tx.rol.updateMany({ data: { vigente: false } });
     for (const r of c.roles) {
-      await ejecutar(
-        `MERGE aa.rol AS t USING (SELECT ? AS id) AS s ON t.id = s.id
-         WHEN MATCHED THEN UPDATE SET nombre = ?, tipo = ?, reclasificado = ?, vigente = 1
-         WHEN NOT MATCHED THEN INSERT (id, nombre, tipo, reclasificado) VALUES (s.id, ?, ?, ?);`,
-        r.id, r.nombre, r.tipo, Boolean(r.reclasificado), r.nombre, r.tipo, Boolean(r.reclasificado)
-      );
+      const datos = { nombre: r.nombre, tipo: r.tipo, reclasificado: Boolean(r.reclasificado) };
+      await tx.rol.upsert({ where: { id: r.id }, update: { ...datos, vigente: true }, create: { id: r.id, ...datos } });
     }
 
     for (const v of Object.values(c.convocatorias)) {
-      await asegurarPeriodo(ejecutar, v.periodo);
-      await ejecutar(
-        `MERGE aa.convocatoria AS t USING (SELECT ? AS periodo) AS s ON t.periodo = s.periodo
-         WHEN MATCHED THEN UPDATE SET apertura = ?, limite = ?, cerrada_manualmente = ?
-         WHEN NOT MATCHED THEN INSERT (periodo, apertura, limite, cerrada_manualmente) VALUES (s.periodo, ?, ?, ?);`,
-        v.periodo, v.apertura, v.limite, v.cerradaManualmente, v.apertura, v.limite, v.cerradaManualmente
-      );
+      await asegurarPeriodo(tx, v.periodo);
+      const datos = { apertura: new Date(v.apertura), limite: new Date(v.limite), cerrada_manualmente: v.cerradaManualmente };
+      await tx.convocatoria.upsert({ where: { periodo: v.periodo }, update: datos, create: { periodo: v.periodo, ...datos } });
     }
   });
 }
 
 /** Las novedades solo se añaden; de una existente solo pueden llegar decisiones nuevas. */
 export async function guardarNovedades(novedades: Novedad[]) {
-  await enTransaccion(async (ejecutar) => {
+  await enTransaccion(async (tx) => {
     for (const n of novedades) {
       const nId = aUuid(n.id);
-      const existe = await ejecutar(`SELECT 1 AS si FROM aa.novedad WHERE id = ?`, nId);
+      const existe = await tx.novedad.findUnique({ where: { id: nId }, select: { id: true } });
 
-      if (!existe.recordset[0]) {
-        if (n.periodo) await asegurarPeriodo(ejecutar, n.periodo);
-        await ejecutar(
-          `INSERT INTO aa.novedad (id, numero, fecha, autor, rol_autor, periodo, con_convocatoria_cerrada, motivo)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          nId, n.numero, n.fecha, n.autor, n.rolAutor, n.periodo, n.conConvocatoriaCerrada, n.motivo
-        );
-        for (const [j, k] of n.cambios.entries()) {
-          await ejecutar(
-            `INSERT INTO aa.novedad_cambio (novedad_id, orden, ambito, parametro, antes, despues) VALUES (?, ?, ?, ?, ?, ?)`,
-            nId, j + 1, k.ambito, k.parametro, k.antes, k.despues
-          );
-        }
-        for (const f of n.afectadas) {
-          await ejecutar(
-            `INSERT INTO aa.novedad_afectacion (novedad_id, asignacion_id, programa, facultad, periodo, errores_antes, errores_ahora)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            nId, aUuid(f.asignacionId), f.programa, f.facultad, f.periodo, f.erroresAntes, f.erroresAhora
-          );
-          for (const [j, d] of f.docentes.entries()) {
-            await ejecutar(
-              `INSERT INTO aa.novedad_afectacion_docente (novedad_id, asignacion_id, orden, nombres, motivos) VALUES (?, ?, ?, ?, ?)`,
-              nId, aUuid(f.asignacionId), j + 1, d.nombres || "—", JSON.stringify(d.motivos)
-            );
-          }
+      if (!existe) {
+        if (n.periodo) await asegurarPeriodo(tx, n.periodo);
+        await tx.novedad.create({
+          data: {
+            id: nId, numero: n.numero, fecha: new Date(n.fecha), autor: n.autor, rol_autor: n.rolAutor,
+            periodo: n.periodo, con_convocatoria_cerrada: n.conConvocatoriaCerrada, motivo: n.motivo,
+          },
+        });
+        await tx.novedad_cambio.createMany({
+          data: n.cambios.map((k, j) => ({
+            novedad_id: nId, orden: j + 1, ambito: k.ambito, parametro: k.parametro, antes: t(k.antes), despues: t(k.despues),
+          })),
+        });
+        // Una por una: el orden de inserción (secuencia) es el de la novedad.
+        for (const a of n.afectadas) {
+          await tx.novedad_afectacion.create({
+            data: {
+              novedad_id: nId, asignacion_id: aUuid(a.asignacionId), programa: a.programa, facultad: a.facultad,
+              periodo: a.periodo, errores_antes: a.erroresAntes, errores_ahora: a.erroresAhora,
+            },
+          });
+          await tx.novedad_afectacion_docente.createMany({
+            data: a.docentes.map((d, j) => ({
+              novedad_id: nId, asignacion_id: aUuid(a.asignacionId), orden: j + 1,
+              nombres: d.nombres || "—", motivos: d.motivos,
+            })),
+          });
         }
       }
 
       // Las decisiones solo se suman, en orden: las que la base ya tiene
       // son las primeras de la lista.
-      const previas = await ejecutar(`SELECT COUNT(*) AS total FROM aa.novedad_decision WHERE novedad_id = ?`, nId);
-      for (const k of n.decisiones.slice(Number(previas.recordset[0].total))) {
-        await ejecutar(
-          `INSERT INTO aa.novedad_decision (novedad_id, asignacion_id, accion, fecha, autor, nota, plazo) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          nId, aUuid(k.asignacionId), k.accion, k.fecha, k.autor, k.nota, k.plazo
-        );
+      const previas = await tx.novedad_decision.count({ where: { novedad_id: nId } });
+      for (const k of n.decisiones.slice(previas)) {
+        await tx.novedad_decision.create({
+          data: {
+            novedad_id: nId, asignacion_id: aUuid(k.asignacionId), accion: k.accion, fecha: new Date(k.fecha),
+            autor: k.autor, nota: t(k.nota), plazo: f(k.plazo),
+          },
+        });
       }
     }
   });

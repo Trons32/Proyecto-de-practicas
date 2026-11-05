@@ -1,5 +1,5 @@
 /**
- * Lectura y escritura de cada store contra SQL Server (SPEC-006).
+ * Lectura y escritura de cada store contra PostgreSQL (SPEC-006, SPEC-011).
  *
  * GET devuelve `{ state, version }`, la forma que espera `persist`, con la
  * versión vigente de cada store para que no dispare su `migrate`.
@@ -11,7 +11,7 @@
  */
 import { CLAVES } from "@/lib/datos/almacen";
 import { sqlHabilitado } from "@/lib/servidor/bd";
-import { CambioRechazado, DatoRechazado, guardarAsignaciones, guardarConfiguracion, guardarNovedades } from "@/lib/servidor/escribir";
+import { CambioRechazado, DatoRechazado, esRechazoDeLaBase, guardarAsignaciones, guardarConfiguracion, guardarNovedades } from "@/lib/servidor/escribir";
 import { leerAsignaciones, leerConfiguracion, leerNovedades } from "@/lib/servidor/leer";
 import { usuarioActual } from "@/lib/servidor/sesion";
 
@@ -70,7 +70,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ clave: string }
     if (e instanceof CambioRechazado) return error(409, e.message);
     // Una restricción de la base (cascada inválida, valor fuera de rango):
     // el dato está mal, no el servidor.
-    if (e && typeof e === "object" && "number" in e && [547, 2627, 2601, 8152, 2628].includes(Number(e.number))) {
+    if (esRechazoDeLaBase(e)) {
       console.warn(`[api/estado] PUT ${nombre} rechazado:`, (e as unknown as Error).message);
       return error(422, "La base rechazó un dato. Revise los campos del docente que estaba editando.");
     }

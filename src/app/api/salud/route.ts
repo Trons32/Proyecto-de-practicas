@@ -3,7 +3,7 @@
  * que sistemas lo use como sonda, así que no dice nada que sirva para
  * atacar: ni servidor, ni base, ni el texto del error.
  */
-import { pool, sqlHabilitado } from "@/lib/servidor/bd";
+import { bd, sqlHabilitado } from "@/lib/servidor/bd";
 import { proveedorAuth } from "@/lib/servidor/sesion";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function GET() {
     try {
       // Una tabla del esquema y no `SELECT 1`: confirma también que la base
       // tiene el esquema cargado y que el usuario de la app tiene permisos.
-      await (await pool()).request().query("SELECT TOP 1 id FROM aa.usuario");
+      await bd().usuario.findFirst({ select: { id: true } });
       estado.base = "ok";
     } catch (e) {
       console.error("[salud] la base no responde:", (e as Error).message);

@@ -3,7 +3,7 @@
  *
  * Los stores no saben dónde persisten; reciben `almacenamiento()` en su
  * opción `storage`. Por defecto es localStorage; con
- * `NEXT_PUBLIC_ALMACEN=sql` es SQL Server a través de `/api/estado`. Las
+ * `NEXT_PUBLIC_ALMACEN=sql` es PostgreSQL a través de `/api/estado`. Las
  * vistas no cambian: ya esperan a `hidratado` antes de pintar, que es justo
  * lo que exige una carga remota.
  *
@@ -53,7 +53,7 @@ const almacenLocal: StateStorage = {
   },
 };
 
-// ── SQL Server, a través de /api/estado (SPEC-006) ───────────
+// ── PostgreSQL, a través de /api/estado (SPEC-006) ───────────
 
 /** Las colecciones que se envían por diferencia; la configuración va entera. */
 const COLECCION: Record<string, "asignaciones" | "novedades" | undefined> = {

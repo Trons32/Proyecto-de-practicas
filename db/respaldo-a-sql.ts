@@ -1,10 +1,13 @@
 /**
  * Convierte un respaldo JSON (el que descarga /admin/datos) en un script de
- * migración para SQL Server.
+ * migración para PostgreSQL (SPEC-011).
+ *
+ *   psql -v ON_ERROR_STOP=1 -d asignacion_academica -f db/migracion.sql
  *
  *   npx tsx db/respaldo-a-sql.ts <respaldo.json> [salida.sql]
  *
- * Se ejecuta sobre una base con esquema.sql y semilla.sql aplicados. Todo va
+ * Se ejecuta sobre una base recién creada con `prisma migrate deploy` y
+ * `prisma db seed`. Todo va
  * en una transacción: o migra entero o no migra nada.
  *
  * Antes de escribir una línea revisa el respaldo contra lo que la base va a
@@ -17,18 +20,18 @@ import { randomUUID } from "node:crypto";
 import { leerRespaldo, type Respaldo } from "../src/lib/datos/respaldo";
 import { CONTRATOS, PROGRAMAS, ROLES } from "../src/lib/catalogos";
 
-// ── Literales T-SQL ───────────────────────────────────────────
+// ── Literales SQL ───────────────────────────────────────────
 
 /** Texto Unicode; la cadena vacía de la aplicación es "sin dato": NULL. */
 const txt = (s: string | null | undefined) =>
-  s === null || s === undefined || s === "" ? "NULL" : `N'${s.replace(/'/g, "''")}'`;
+  s === null || s === undefined || s === "" ? "NULL" : `'${s.replace(/'/g, "''")}'`;
 const num = (v: number | null | undefined) =>
   v === null || v === undefined || Number.isNaN(v) ? "NULL" : String(v);
-const bit = (b: boolean) => (b ? "1" : "0");
+const bit = (b: boolean) => (b ? "TRUE" : "FALSE");
 
 /**
  * La aplicación genera UUID, salvo en contextos no seguros (http fuera de
- * localhost), donde cae a un id corto. UNIQUEIDENTIFIER no lo acepta: se le
+ * localhost), donde cae a un id corto. UUID no lo acepta: se le
  * asigna un UUID estable para que todas sus referencias sigan apuntando igual.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -97,12 +100,9 @@ function generar(r: Respaldo): string {
     "/*",
     "  Migración de Asignación Académica · CECAR",
     `  Respaldo exportado por ${r.exportadoPor} el ${r.exportado}.`,
-    "  GENERADO por db/respaldo-a-sql.ts. Ejecutar sobre esquema.sql + semilla.sql.",
+    "  GENERADO por db/respaldo-a-sql.ts. Ejecutar tras prisma migrate deploy + db seed.",
     "*/",
-    "SET NOCOUNT ON;",
-    "SET QUOTED_IDENTIFIER ON; -- los índices filtrados lo exigen",
-    "SET XACT_ABORT ON;",
-    "BEGIN TRANSACTION;"
+    "BEGIN;"
   );
 
   sec("Parametrización vigente");
@@ -118,12 +118,11 @@ function generar(r: Respaldo): string {
   // aplicación eliminó, no vigentes (las cerradas pueden seguir usándolos).
   for (const rol of c.roles) {
     l.push(
-      `MERGE aa.rol AS t USING (VALUES (${rol.id}, ${txt(rol.nombre)}, '${rol.tipo}', ${bit(Boolean(rol.reclasificado))})) AS s (id, nombre, tipo, reclasificado) ON t.id = s.id ` +
-        `WHEN MATCHED THEN UPDATE SET nombre = s.nombre, tipo = s.tipo, vigente = 1 ` +
-        `WHEN NOT MATCHED THEN INSERT (id, nombre, tipo, reclasificado) VALUES (s.id, s.nombre, s.tipo, s.reclasificado);`
+      `INSERT INTO aa.rol (id, nombre, tipo, reclasificado) VALUES (${rol.id}, ${txt(rol.nombre)}, '${rol.tipo}', ${bit(Boolean(rol.reclasificado))}) ` +
+        `ON CONFLICT (id) DO UPDATE SET nombre = EXCLUDED.nombre, tipo = EXCLUDED.tipo, vigente = TRUE;`
     );
   }
-  l.push(`UPDATE aa.rol SET vigente = 0 WHERE id NOT IN (${c.roles.map((x) => x.id).join(", ") || "NULL"});`);
+  l.push(`UPDATE aa.rol SET vigente = FALSE WHERE id NOT IN (${c.roles.map((x) => x.id).join(", ") || "NULL"});`);
 
   sec("Periodos y convocatorias");
   const periodos = new Set<string>([
@@ -133,7 +132,7 @@ function generar(r: Respaldo): string {
     ...novedades.flatMap((n) => n.afectadas.map((a) => a.periodo)),
   ]);
   for (const p of [...periodos].sort()) {
-    l.push(`IF NOT EXISTS (SELECT 1 FROM aa.periodo WHERE codigo = '${p}') INSERT INTO aa.periodo (codigo) VALUES ('${p}');`);
+    l.push(`INSERT INTO aa.periodo (codigo) VALUES ('${p}') ON CONFLICT DO NOTHING;`);
   }
   for (const v of Object.values(c.convocatorias)) {
     l.push(
@@ -151,7 +150,7 @@ function generar(r: Respaldo): string {
     }
   }
   for (const [doc, nombres] of personas) {
-    l.push(`INSERT INTO aa.docente (documento, nombres) VALUES ('${doc}', ${txt(nombres) === "NULL" ? "N'—'" : txt(nombres)});`);
+    l.push(`INSERT INTO aa.docente (documento, nombres) VALUES ('${doc}', ${txt(nombres) === "NULL" ? "'—'" : txt(nombres)});`);
   }
 
   for (const a of asignaciones) {
@@ -252,7 +251,7 @@ function generar(r: Respaldo): string {
     }
   }
 
-  l.push("", "COMMIT TRANSACTION;", "");
+  l.push("", "COMMIT;", "");
   return l.join("\n");
 }
 

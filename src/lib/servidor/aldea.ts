@@ -10,7 +10,7 @@
  * con variables de entorno (ver `db/env.produccion.ejemplo`). Si el contrato
  * real no cabe en ellas, lo único que cambia es `consultarApi()`.
  */
-import { ejecutarSuelto } from "./bd";
+import { bd } from "./bd";
 import type { Rol, Usuario } from "../auth/sesion";
 
 /** Pasado este tiempo se responde "credenciales incorrectas" en vez de colgar el login. */
@@ -54,11 +54,10 @@ export async function consultarApi(email: string, clave: string): Promise<boolea
 
 /** El usuario habilitado en la aplicación, o null si no lo está. */
 export async function usuarioRegistrado(email: string): Promise<Usuario | null> {
-  const { recordset } = await ejecutarSuelto(
-    "SELECT CONVERT(VARCHAR(36), id) AS id, email, nombres, rol FROM aa.usuario WHERE email = ? AND activo = 1",
-    email.trim().toLowerCase()
-  );
-  const fila = recordset[0];
+  const fila = await bd().usuario.findFirst({
+    where: { email: email.trim().toLowerCase(), activo: true },
+    select: { id: true, email: true, nombres: true, rol: true },
+  });
   if (!fila) return null;
   return { id: String(fila.id), email: String(fila.email), nombres: String(fila.nombres), rol: fila.rol as Rol };
 }

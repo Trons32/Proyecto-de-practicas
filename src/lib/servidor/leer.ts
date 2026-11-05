@@ -10,76 +10,45 @@ import type { ReglaDedicacion, Rol } from "../catalogos";
 import type { Convocatoria } from "../convocatoria";
 import type { Limites, Novedad } from "../novedades";
 import type { Asignacion, Docente, Evento } from "../tipos";
-import { ejecutarSuelto, pool, type Ejecutar } from "./bd";
-
-type Fila = Record<string, unknown>;
+import { bd, type Cliente } from "./bd";
 
 const s = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+/** Prisma entrega NUMERIC como Decimal; `Number()` lo convierte. */
 const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
-const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : s(v));
+const iso = (v: Date | null | undefined) => (v ? v.toISOString() : "");
 /** Solo las claves con valor: los opcionales ausentes no se escriben como `undefined`. */
 const opcionales = <T extends object>(o: T): Partial<T> =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined && v !== "")) as Partial<T>;
 
-/** Agrupa filas por una columna, conservando el orden de la consulta. */
-function agrupar(filas: Fila[], clave: string): Map<string, Fila[]> {
-  const m = new Map<string, Fila[]>();
-  for (const f of filas) {
-    const k = String(f[clave]).toLowerCase();
-    if (!m.has(k)) m.set(k, []);
-    m.get(k)!.push(f);
-  }
-  return m;
-}
-
-const id = (v: unknown) => String(v).toLowerCase();
-
 /**
- * `ids` limita la lectura a esas asignaciones; `ejecutar` permite leer
+ * `ids` limita la lectura a esas asignaciones; `cliente` permite leer
  * dentro de una transacción, que es como el servidor valida un guardado
- * contra lo que hay (ver `escribir.ts`). Las consultas van una tras otra:
- * una transacción de mssql no admite peticiones simultáneas.
+ * contra lo que hay (ver `escribir.ts`).
  */
 export async function leerAsignaciones(
-  { ids, ejecutar = ejecutarSuelto }: { ids?: string[]; ejecutar?: Ejecutar } = {}
+  { ids, cliente = bd() }: { ids?: string[]; cliente?: Cliente } = {}
 ): Promise<{ asignaciones: Asignacion[] }> {
-  const filtro = ids ? `IN (SELECT CAST(value AS UNIQUEIDENTIFIER) FROM OPENJSON(?))` : null;
-  const lista = ids ? [JSON.stringify(ids)] : [];
-  const deAsignaciones = (columna: string) => (filtro ? `WHERE ${columna} ${filtro}` : "");
-  const deDocentes = filtro
-    ? `WHERE docente_asignado_id IN (SELECT id FROM aa.docente_asignado WHERE asignacion_id ${filtro})`
-    : "";
+  const filas = await cliente.asignacion.findMany({
+    where: ids ? { id: { in: ids } } : undefined,
+    orderBy: { creada: "desc" },
+    include: {
+      programa: true,
+      docente_asignado: {
+        orderBy: { orden: "asc" },
+        include: { curso_asignado: { orderBy: { orden: "asc" } }, actividad: { orderBy: { orden: "asc" } } },
+      },
+      // El orden de inserción es el de la bitácora; la fecha sola empataría
+      // eventos del mismo milisegundo.
+      evento_asignacion: { orderBy: [{ fecha: "asc" }, { secuencia: "asc" }] },
+      linea_base_curso: { orderBy: { orden: "asc" } },
+    },
+  });
 
-  const asig = await ejecutar(
-    `SELECT a.*, p.nombre AS programa, p.facultad FROM aa.asignacion a
-     JOIN aa.programa p ON p.id = a.programa_id ${deAsignaciones("a.id")} ORDER BY a.creada DESC`,
-    ...lista
-  );
-  const docs = await ejecutar(`SELECT * FROM aa.docente_asignado ${deAsignaciones("asignacion_id")} ORDER BY asignacion_id, orden`, ...lista);
-  const cursos = await ejecutar(`SELECT * FROM aa.curso_asignado ${deDocentes} ORDER BY docente_asignado_id, orden`, ...lista);
-  const acts = await ejecutar(`SELECT * FROM aa.actividad ${deDocentes} ORDER BY docente_asignado_id, orden`, ...lista);
-  // El orden de inserción es el de la bitácora; la fecha sola empataría
-  // eventos del mismo milisegundo.
-  const eventos = await ejecutar(
-    `SELECT * FROM aa.evento_asignacion ${deAsignaciones("asignacion_id")} ORDER BY asignacion_id, fecha, %%physloc%%`,
-    ...lista
-  );
-
-  const docsPor = agrupar(docs.recordset, "asignacion_id");
-  const cursosPor = agrupar(cursos.recordset, "docente_asignado_id");
-  const actsPor = agrupar(acts.recordset, "docente_asignado_id");
-  const eventosPor = agrupar(eventos.recordset, "asignacion_id");
-  const base = await ejecutar(
-    `SELECT * FROM aa.linea_base_curso ${deAsignaciones("asignacion_id")} ORDER BY asignacion_id, orden`,
-    ...lista
-  );
-  const basePor = agrupar(base.recordset, "asignacion_id");
-
-  const docente = (d: Fila): Docente => {
-    const actividades = actsPor.get(id(d.id)) ?? [];
-    const actividad = (x: Fila) => ({ id: id(x.id), rolId: n(x.rol_id), horas: Number(x.horas) });
+  type FilaDocente = (typeof filas)[number]["docente_asignado"][number];
+  const docente = (d: FilaDocente): Docente => {
+    const actividad = (x: FilaDocente["actividad"][number]) => ({ id: x.id, rolId: x.rol_id, horas: Number(x.horas) });
     return {
-      id: id(d.id),
+      id: d.id,
       documento: s(d.documento),
       nombres: s(d.nombres),
       nivelFormacion: s(d.nivel_formacion),
@@ -96,72 +65,72 @@ export async function leerAsignaciones(
       preparacion: Number(d.preparacion),
       atencion: Number(d.atencion),
       comunidades: Number(d.comunidades),
-      descargas: actividades.filter((x) => x.clase === "DESCARGA").map(actividad),
-      administrativas: actividades.filter((x) => x.clase === "ADMINISTRATIVA").map(actividad),
-      cursos: (cursosPor.get(id(d.id)) ?? []).map((k) => ({
-        id: id(k.id),
+      descargas: d.actividad.filter((x) => x.clase === "DESCARGA").map(actividad),
+      administrativas: d.actividad.filter((x) => x.clase === "ADMINISTRATIVA").map(actividad),
+      cursos: d.curso_asignado.map((k) => ({
+        id: k.id,
         codigoPrograma: s(k.codigo_programa),
         nombrePrograma: s(k.nombre_programa),
         codigoPensum: s(k.codigo_pensum),
         codigoCurso: s(k.codigo_curso),
         nombreCurso: s(k.nombre_curso),
-        semestre: n(k.semestre),
+        semestre: k.semestre,
         grupo: s(k.grupo),
         jornada: s(k.jornada),
         intensidadHoraria: n(k.intensidad_horaria),
-        creditos: n(k.creditos),
-        estudiantes: n(k.estudiantes),
+        creditos: k.creditos,
+        estudiantes: k.estudiantes,
         modalidad: s(k.modalidad),
       })),
     };
   };
 
-  const evento = (e: Fila): Evento => ({
-    id: id(e.id),
+  const evento = (e: (typeof filas)[number]["evento_asignacion"][number]): Evento => ({
+    id: e.id,
     tipo: e.tipo as Evento["tipo"],
     fecha: iso(e.fecha),
-    autor: s(e.autor),
+    autor: e.autor,
     rolAutor: e.rol_autor as Evento["rolAutor"],
     ...opcionales({
       nota: s(e.nota),
-      plazo: e.plazo ? iso(e.plazo) : "",
-      version: n(e.version) ?? undefined,
-      novedadId: e.novedad_id ? id(e.novedad_id) : "",
+      plazo: iso(e.plazo),
+      version: e.version ?? undefined,
+      novedadId: s(e.novedad_id),
     }),
   });
 
   return {
-    asignaciones: asig.recordset.map((a) => ({
-      id: id(a.id),
-      periodo: s(a.periodo),
-      facultad: s(a.facultad),
-      programa: s(a.programa),
+    asignaciones: filas.map((a) => ({
+      id: a.id,
+      periodo: a.periodo,
+      facultad: a.programa.facultad,
+      programa: a.programa.nombre,
       estado: a.estado as Asignacion["estado"],
       creada: iso(a.creada),
       actualizada: iso(a.actualizada),
-      version: Number(a.version),
-      ...opcionales({ plazoCorreccion: a.plazo_correccion ? iso(a.plazo_correccion) : "" }),
+      version: a.version,
+      ...opcionales({ plazoCorreccion: iso(a.plazo_correccion) }),
       ...(a.linea_base_fecha
         ? {
             lineaBase: {
               fecha: iso(a.linea_base_fecha),
               version: Number(a.linea_base_version),
-              cursos: (basePor.get(id(a.id)) ?? []).map((k) => ({
-                id: id(k.curso_id),
-                docenteId: id(k.docente_id),
+              cursos: a.linea_base_curso.map((k) => ({
+                id: k.curso_id,
+                docenteId: k.docente_id,
                 docente: s(k.docente),
                 codigoCurso: s(k.codigo_curso),
                 nombreCurso: s(k.nombre_curso),
-                semestre: n(k.semestre),
+                semestre: k.semestre,
                 grupo: s(k.grupo),
                 intensidadHoraria: n(k.intensidad_horaria),
-                estudiantes: n(k.estudiantes),
+                estudiantes: k.estudiantes,
               })),
             },
           }
         : {}),
-      docentes: (docsPor.get(id(a.id)) ?? []).map(docente),
-      bitacora: (eventosPor.get(id(a.id)) ?? []).map(evento),
+      docentes: a.docente_asignado.map(docente),
+      bitacora: a.evento_asignacion.map(evento),
     })),
   };
 }
@@ -172,91 +141,87 @@ export async function leerConfiguracion(): Promise<{
   limites: Limites;
   convocatorias: Record<string, Convocatoria>;
 }> {
-  const bd = await pool();
-  const [reglas, limite, roles, convocatorias] = await Promise.all([
-    bd.query(`SELECT * FROM aa.regla_dedicacion`),
-    bd.query(`SELECT * FROM aa.limite WHERE id = 1`),
-    bd.query(`SELECT * FROM aa.rol WHERE vigente = 1 ORDER BY id`),
-    bd.query(`SELECT * FROM aa.convocatoria ORDER BY periodo`),
+  const c = bd();
+  const [reglas, l, roles, convocatorias] = await Promise.all([
+    c.regla_dedicacion.findMany(),
+    c.limite.findUniqueOrThrow({ where: { id: 1 } }),
+    c.rol.findMany({ where: { vigente: true }, orderBy: { id: "asc" } }),
+    c.convocatoria.findMany({ orderBy: { periodo: "asc" } }),
   ]);
-  const l = limite.recordset[0];
   return {
     reglas: Object.fromEntries(
-      reglas.recordset.map((r) => [
+      reglas.map((r) => [
         r.dedicacion,
         { maxHoras: r.max_horas, preparacion: r.preparacion, atencion: r.atencion, comunidades: r.comunidades },
       ])
     ),
-    roles: roles.recordset.map((r) => ({
+    roles: roles.map((r) => ({
       id: r.id,
       nombre: r.nombre,
-      tipo: r.tipo,
+      tipo: r.tipo as Rol["tipo"],
       ...(r.reclasificado ? { reclasificado: true } : {}),
     })),
     limites: { maxCursos: l.max_cursos, maxDescargas: l.max_descargas, maxAdministrativas: l.max_administrativas },
     convocatorias: Object.fromEntries(
-      convocatorias.recordset.map((c) => [
-        c.periodo,
-        { periodo: c.periodo, apertura: iso(c.apertura), limite: iso(c.limite), cerradaManualmente: Boolean(c.cerrada_manualmente) },
+      convocatorias.map((v) => [
+        v.periodo,
+        { periodo: v.periodo, apertura: iso(v.apertura), limite: iso(v.limite), cerradaManualmente: v.cerrada_manualmente },
       ])
     ),
   };
 }
 
 export async function leerNovedades(): Promise<{ novedades: Novedad[] }> {
-  const bd = await pool();
-  const [novs, cambios, afect, afectDoc, decisiones] = await Promise.all([
-    bd.query(`SELECT * FROM aa.novedad ORDER BY numero`),
-    bd.query(`SELECT * FROM aa.novedad_cambio ORDER BY novedad_id, orden`),
-    bd.query(`SELECT * FROM aa.novedad_afectacion ORDER BY novedad_id, %%physloc%%`),
-    bd.query(`SELECT * FROM aa.novedad_afectacion_docente ORDER BY novedad_id, asignacion_id, orden`),
-    bd.query(`SELECT * FROM aa.novedad_decision ORDER BY id`),
-  ]);
-  const cambiosPor = agrupar(cambios.recordset, "novedad_id");
-  const afectPor = agrupar(afect.recordset, "novedad_id");
-  const decisionesPor = agrupar(decisiones.recordset, "novedad_id");
-  const docsPor = new Map<string, Fila[]>();
-  for (const d of afectDoc.recordset) {
-    const k = `${id(d.novedad_id)}|${id(d.asignacion_id)}`;
-    if (!docsPor.has(k)) docsPor.set(k, []);
-    docsPor.get(k)!.push(d);
-  }
+  const filas = await bd().novedad.findMany({
+    orderBy: { numero: "asc" },
+    include: {
+      novedad_cambio: { orderBy: { orden: "asc" } },
+      novedad_afectacion: {
+        orderBy: { secuencia: "asc" },
+        include: {
+          novedad_afectacion_docente: { orderBy: { orden: "asc" } },
+          novedad_decision: true,
+        },
+      },
+    },
+  });
 
   return {
-    novedades: novs.recordset.map((v) => ({
-      id: id(v.id),
+    novedades: filas.map((v) => ({
+      id: v.id,
       numero: v.numero,
       fecha: iso(v.fecha),
       autor: v.autor,
-      rolAutor: v.rol_autor,
+      rolAutor: v.rol_autor as Novedad["rolAutor"],
       periodo: v.periodo ?? null,
-      conConvocatoriaCerrada: Boolean(v.con_convocatoria_cerrada),
+      conConvocatoriaCerrada: v.con_convocatoria_cerrada,
       motivo: v.motivo,
-      cambios: (cambiosPor.get(id(v.id)) ?? []).map((c) => ({
+      cambios: v.novedad_cambio.map((c) => ({
         ambito: c.ambito as Novedad["cambios"][number]["ambito"],
-        parametro: s(c.parametro),
-        antes: (c.antes as string | null) ?? null,
-        despues: (c.despues as string | null) ?? null,
+        parametro: c.parametro,
+        antes: c.antes,
+        despues: c.despues,
       })),
-      afectadas: (afectPor.get(id(v.id)) ?? []).map((f) => ({
-        asignacionId: id(f.asignacion_id),
-        programa: s(f.programa),
-        facultad: s(f.facultad),
-        periodo: s(f.periodo),
-        erroresAntes: Number(f.errores_antes),
-        erroresAhora: Number(f.errores_ahora),
-        docentes: (docsPor.get(`${id(v.id)}|${id(f.asignacion_id)}`) ?? []).map((d) => ({
-          nombres: s(d.nombres),
-          motivos: JSON.parse(String(d.motivos)) as string[],
+      afectadas: v.novedad_afectacion.map((f) => ({
+        asignacionId: f.asignacion_id,
+        programa: f.programa,
+        facultad: f.facultad,
+        periodo: f.periodo,
+        erroresAntes: f.errores_antes,
+        erroresAhora: f.errores_ahora,
+        docentes: f.novedad_afectacion_docente.map((d) => ({ nombres: d.nombres, motivos: d.motivos as string[] })),
+      })),
+      // Las decisiones van en el orden en que se tomaron, no por asignación.
+      decisiones: v.novedad_afectacion
+        .flatMap((f) => f.novedad_decision)
+        .sort((a, b) => a.id - b.id)
+        .map((k) => ({
+          asignacionId: k.asignacion_id,
+          accion: k.accion as "reabierta" | "sin_accion",
+          fecha: iso(k.fecha),
+          autor: k.autor,
+          ...opcionales({ nota: s(k.nota), plazo: iso(k.plazo) }),
         })),
-      })),
-      decisiones: (decisionesPor.get(id(v.id)) ?? []).map((k) => ({
-        asignacionId: id(k.asignacion_id),
-        accion: k.accion as "reabierta" | "sin_accion",
-        fecha: iso(k.fecha),
-        autor: s(k.autor),
-        ...opcionales({ nota: s(k.nota), plazo: k.plazo ? iso(k.plazo) : "" }),
-      })),
     })),
   };
 }

@@ -1,59 +1,75 @@
 # Despliegue en producción
 
 Paso a paso para dejar `https://planificacionacademica.cecar.edu.co`
-guardando en SQL Server y validando claves con la API de sistemas
-(SPEC-010). Hay tres piezas y tres responsables:
+guardando en PostgreSQL (SPEC-011) y validando claves con la API de
+sistemas (SPEC-010). Hay tres piezas y tres responsables:
 
 ```
-navegador ──HTTPS──► servidor web (Next.js) ──1433──► SQL Server   (DBA)
+navegador ──HTTPS──► servidor web (Next.js) ──5432──► PostgreSQL (VPS)   (DBA)
                              │
-                             └──HTTPS──► API de credenciales      (sistemas)
+                             └──HTTPS──► API de credenciales           (sistemas)
 ```
 
-## 1. La base de datos (DBA)
+## 1. La base de datos en la VPS (DBA)
 
-Requiere SQL Server 2016 o posterior. Desde una máquina con `sqlcmd` y el
-repositorio clonado:
+Requiere PostgreSQL 13 o posterior (Ubuntu/Debian: `sudo apt install postgresql`).
 
 ```bash
-# 1.1 Crear la base (intercalación española, como la de desarrollo)
-sqlcmd -S <servidor> -U <admin> -C -Q "CREATE DATABASE asignacion_academica COLLATE Modern_Spanish_CI_AS"
-
-# 1.2 Esquema y catálogos. -f 65001 es obligatorio: hay tildes en las claves.
-sqlcmd -S <servidor> -U <admin> -C -b -I -f 65001 -d asignacion_academica -i db/esquema.sql
-sqlcmd -S <servidor> -U <admin> -C -b -I -f 65001 -d asignacion_academica -i db/semilla.sql
-
-# 1.3 El login con el que se conecta la aplicación (nunca sa)
-sqlcmd -S <servidor> -U <admin> -C -b -f 65001 -d asignacion_academica -v CLAVE_APP="<clave fuerte>" -i db/crear-usuario-app.sql
-
-# 1.4 Quién puede entrar y con qué rol
-cp db/usuarios.ejemplo.sql db/usuarios.sql     # editar correos, nombres y roles
-sqlcmd -S <servidor> -U <admin> -C -b -f 65001 -d asignacion_academica -i db/usuarios.sql
+# 1.1 En la VPS: la base (UTF-8: hay tildes en los catálogos), su dueño
+#     —con el que se crean las tablas— y el usuario de la aplicación.
+sudo -u postgres psql <<'SQL'
+CREATE ROLE asignacion_admin LOGIN PASSWORD '<clave del dueño>';
+CREATE DATABASE asignacion_academica OWNER asignacion_admin ENCODING 'UTF8' TEMPLATE template0;
+SQL
 ```
 
-`esquema.sql` ya trae todo lo de `db/migraciones/`: en una base nueva no se
-ejecutan. En una base que ya existía, sí, en orden.
+```bash
+# 1.2 Desde la carpeta del proyecto (en la VPS o en cualquier equipo que la
+#     alcance), con el DUEÑO: tablas, reglas y catálogos.
+DATABASE_URL="postgresql://asignacion_admin:<clave del dueño>@<vps>:5432/asignacion_academica" npx prisma migrate deploy
 
-Si ya hay datos registrados en el navegador, se migran con el respaldo JSON
-(ver `db/README.md` → *Migrar lo registrado en la aplicación*).
+# 1.3 Quién puede entrar y con qué rol
+cp prisma/usuarios.ejemplo.json prisma/usuarios.json     # editar correos, nombres, rol y programa
+DATABASE_URL="postgresql://asignacion_admin:<clave del dueño>@<vps>:5432/asignacion_academica" npx prisma db seed
+```
 
-**Red:** el servidor web tiene que alcanzar el SQL Server por el puerto 1433
-(o el de la instancia). Pedir la regla de firewall si están en máquinas distintas.
+```bash
+# 1.4 En la VPS: el usuario de la aplicación. La migración ya creó el rol
+#     rol_asignacion_app, que no puede editar la bitácora ni las novedades.
+sudo -u postgres psql -c "CREATE ROLE app_asignacion LOGIN PASSWORD '<clave de la app>' IN ROLE rol_asignacion_app;"
+sudo -u postgres psql -d asignacion_academica -c "ALTER ROLE app_asignacion SET search_path = aa;"
+```
+
+La aplicación se conecta con `app_asignacion`, **nunca** con el dueño ni con
+`postgres`: los permisos que protegen la bitácora no alcanzan al dueño.
+Para futuras versiones con migraciones nuevas, se repite el paso 1.2.
+
+Si ya hay datos registrados (en el navegador o en la antigua base SQL
+Server), se migran con el respaldo JSON (ver `db/README.md` → *Migrar lo
+registrado*).
+
+**Red:** si la aplicación y la base están en máquinas distintas, en la VPS:
+`listen_addresses` en `postgresql.conf`, una línea
+`hostssl asignacion_academica app_asignacion,asignacion_admin <ip>/32 scram-sha-256`
+en `pg_hba.conf`, y el puerto 5432 abierto **solo** para esa IP. Si van en
+la misma VPS, la URL usa `localhost` y no se abre nada.
+
+**Respaldos de la base:** `pg_dump -Fc asignacion_academica > aa-$(date +%F).dump`
+(se restaura con `pg_restore -d asignacion_academica aa-….dump`).
 
 ## 2. Las variables del servidor web
 
 En el servidor, en la carpeta del proyecto:
 
 ```bash
-cp db/env.produccion.ejemplo .env.production.local
+cp .env.example .env.production.local
 ```
 
 y completar, como mínimo:
 
 | Variable          | Valor                                                          |
 | ----------------- | -------------------------------------------------------------- |
-| `MSSQL_SERVIDOR`  | nombre o IP del SQL Server, visto desde el servidor web        |
-| `MSSQL_CLAVE`     | la `CLAVE_APP` del paso 1.3                                    |
+| `DATABASE_URL`    | `postgresql://app_asignacion:<clave de la app>@<vps>:5432/asignacion_academica` (añadir `?sslmode=no-verify` si la base está en otra máquina con certificado propio) |
 | `SESION_SECRETO`  | `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` |
 | `AUTH_API_URL`    | el endpoint que entregue sistemas                              |
 | `AUTH_API_TOKEN`  | si la API lo exige                                             |
@@ -83,7 +99,7 @@ ajusta con `AUTH_API_CAMPO_USUARIO`, `AUTH_API_CAMPO_CLAVE` y
 cambia solo `consultarApi()` en `src/lib/servidor/aldea.ts`.
 
 La API **solo valida la clave**. Para entrar, el correo debe estar además
-activo en `aa.usuario` (paso 1.4); de ahí sale el rol.
+activo en `aa.usuario` (paso 1.3); de ahí sale el rol.
 
 ## 3. Compilar y arrancar
 
@@ -112,7 +128,7 @@ Debe responder `200` con:
 | Si dice                      | Revisar                                                          |
 | ---------------------------- | ---------------------------------------------------------------- |
 | `"almacen": "navegador"`     | falta `ALMACEN=sql`                                              |
-| `"base": "error"`            | servidor, puerto, firewall, clave, o que falte el paso 1.2/1.3 (el detalle sale en el log del servidor) |
+| `"base": "error"`            | `DATABASE_URL`, firewall, `pg_hba.conf`, o que falte el paso 1.2/1.4 (el detalle sale en el log del servidor) |
 | `"sesion": "falta-secreto"`  | `SESION_SECRETO` vacío o de menos de 32 caracteres               |
 
 Luego, en el navegador: entrar con un administrador y un coordinador de

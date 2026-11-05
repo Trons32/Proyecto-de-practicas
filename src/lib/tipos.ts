@@ -196,7 +196,7 @@ export const cursosBase = (docentes: Docente[]): CursoBase[] =>
   );
 
 /**
- * Siempre un UUID v4: la base los guarda como UNIQUEIDENTIFIER.
+ * Siempre un UUID v4: la base los guarda como UUID.
  * `randomUUID` no existe fuera de un contexto seguro (http dentro de la red
  * de la universidad), pero `getRandomValues` sí.
  */

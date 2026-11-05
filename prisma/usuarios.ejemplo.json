@@ -1,0 +1,9 @@
+[
+  { "email": "administrador@cecar.edu.co", "nombres": "Nombre del administrador", "rol": "ADMIN" },
+  {
+    "email": "coordinador.sistemas@cecar.edu.co",
+    "nombres": "Nombre del coordinador",
+    "rol": "COORDINADOR",
+    "programa": "INGENIERÍA DE SISTEMAS"
+  }
+]
