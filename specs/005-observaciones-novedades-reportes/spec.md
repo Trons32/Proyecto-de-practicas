@@ -46,6 +46,8 @@ frente a `globals.css`.
 
 ## B · Observaciones y novedades
 
+> **Ver SPEC-013:** el cliente definió observación y novedad según el momento del cambio de parámetros (convocatoria abierta / cerrada). Esta parte queda como propuesta para los señalamientos por asignación, con otro nombre.
+
 **Borrador.** No se implementa hasta que el cliente responda las preguntas
 abiertas: cambia la forma del estado persistido (`novedades` v1) y el esquema
 SQL.

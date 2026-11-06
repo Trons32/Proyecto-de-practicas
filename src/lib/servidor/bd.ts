@@ -38,6 +38,3 @@ export async function cerrar() {
   await global_.__prismaAsignacion?.$disconnect();
   global_.__prismaAsignacion = undefined;
 }
-
-/** La API solo existe si el servidor se configuró para la base de datos. */
-export const sqlHabilitado = () => process.env.ALMACEN === "sql";

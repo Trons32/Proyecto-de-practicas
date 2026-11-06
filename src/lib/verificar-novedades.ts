@@ -8,7 +8,7 @@
  */
 import { CONFIG_OFICIAL } from "./calculo";
 import { MAX_ADMINISTRATIVAS, MAX_CURSOS, MAX_DESCARGAS, REGLAS_DEDICACION, ROLES } from "./catalogos";
-import { diferenciasParametros, fotoDeImpacto, periodoDeReferencia, type Parametros } from "./novedades";
+import { diferenciasParametros, fotoDeImpacto, claseDe, motivoPorDefecto, numeroEnSuClase, periodoDeReferencia, tituloDe, type Novedad, type Parametros } from "./novedades";
 import { nuevaAsignacion, nuevoCurso, nuevoDocente, type Asignacion } from "./tipos";
 
 let fallos = 0;
@@ -108,6 +108,37 @@ const oficial = (): Parametros => ({
   const r = periodoDeReferencia(conv, ahora);
   comprobar("toma la convocatoria más reciente, ya cerrada", r.periodo === "2026-2" && r.cerrada, r);
   comprobar("sin convocatorias no hay periodo", periodoDeReferencia({}, ahora).periodo === null);
+}
+
+// ── Un cambio por modal (SPEC-012) ────────────────────────────
+{
+  const antes = oficial();
+  const nuevo = { ...antes, roles: [...antes.roles, { id: 57, nombre: "PEPE", tipo: "INVESTIGACION" as const }] };
+  const c = diferenciasParametros(antes, nuevo);
+  comprobar("crear un rol es un solo cambio", c.length === 1 && c[0].antes === null, c);
+  comprobar("motivo por defecto al crear", motivoPorDefecto(c) === "Creación del rol PEPE (Investigación)", motivoPorDefecto(c));
+
+  const inactivo = { ...antes, roles: antes.roles.map((r) => (r.id === 1 ? { ...r, inactivo: true as const } : r)) };
+  const d = diferenciasParametros(antes, inactivo);
+  comprobar("desactivar es un cambio de estado, no una baja", d.length === 1 && d[0].antes === "Activo" && d[0].despues === "Inactivo", d);
+  comprobar("motivo por defecto al desactivar", motivoPorDefecto(d) === "Desactivación del rol DECANO", motivoPorDefecto(d));
+
+  const regla = { ...antes, reglas: { ...antes.reglas, TIEMPO_COMPLETO: { ...antes.reglas.TIEMPO_COMPLETO, maxHoras: 38 } } };
+  const m = motivoPorDefecto(diferenciasParametros(antes, regla));
+  comprobar("motivo por defecto en una dedicación", m.startsWith("Cambio en la dedicación"), m);
+  const lim = { ...antes, limites: { ...antes.limites, maxCursos: 11 } };
+  comprobar("motivo por defecto en límites", motivoPorDefecto(diferenciasParametros(antes, lim)) === "Cambio en los límites del formato");
+}
+
+// ── Novedad u observación (SPEC-013) ──────────────────────────
+{
+  const reg = (numero: number, cerrada: boolean) =>
+    ({ id: String(numero), numero, conConvocatoriaCerrada: cerrada }) as Novedad;
+  const todas = [reg(1, false), reg(2, true), reg(3, false), reg(4, true)];
+  comprobar("con la convocatoria abierta es observación", claseDe(todas[0]) === "observacion");
+  comprobar("con la convocatoria cerrada es novedad", claseDe(todas[1]) === "novedad");
+  comprobar("cada clase numera por su lado", numeroEnSuClase(todas, todas[2]) === 2 && numeroEnSuClase(todas, todas[3]) === 2);
+  comprobar("título por clase", tituloDe(todas, todas[3]) === "Novedad N.º 2" && tituloDe(todas, todas[0]) === "Observación N.º 1", tituloDe(todas, todas[3]));
 }
 
 console.log(fallos === 0 ? "\n✓ Novedades verificadas." : `\n✗ ${fallos} fallos.`);

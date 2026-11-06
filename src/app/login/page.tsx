@@ -33,8 +33,8 @@ export default function Login() {
     }
 
     iniciar(r.usuario, recordarme);
-    // Con SQL, lo que se intentó cargar antes del login fue rechazado.
-    if (process.env.NEXT_PUBLIC_ALMACEN === "sql") await recargarDatos();
+    // Lo que se intentó cargar antes del login fue rechazado (401).
+    await recargarDatos();
     router.replace(inicioDeRol(r.usuario.rol));
   };
 

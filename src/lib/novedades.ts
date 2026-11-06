@@ -23,10 +23,17 @@ export interface Limites {
   maxAdministrativas: number;
 }
 
+/**
+ * Un rol de la parametrización. Los roles no se borran: se desactivan
+ * (SPEC-012). Uno inactivo ya no se ofrece al coordinador, pero las
+ * asignaciones que lo usan siguen sumando sus horas; borrarlo se las quitaba.
+ */
+export type RolParametro = Rol & { inactivo?: true };
+
 /** Todo lo que el administrador parametriza, en una sola pieza. */
 export interface Parametros {
   reglas: Record<string, ReglaDedicacion>;
-  roles: Rol[];
+  roles: RolParametro[];
   limites: Limites;
 }
 
@@ -165,6 +172,14 @@ export function diferenciasParametros(antes: Parametros, despues: Parametros): C
         despues: ETIQUETA_TIPO[n.tipo],
       });
     }
+    if (Boolean(n.inactivo) !== Boolean(r.inactivo)) {
+      cambios.push({
+        ambito: "rol",
+        parametro: `Rol ${id} · ${n.nombre} · estado`,
+        antes: r.inactivo ? "Inactivo" : "Activo",
+        despues: n.inactivo ? "Inactivo" : "Activo",
+      });
+    }
   }
   for (const [id, n] of nuevos) {
     if (!previos.has(id)) {
@@ -232,3 +247,68 @@ export const ETIQUETA_AMBITO: Record<AmbitoCambio, string> = {
   limite: "Límites",
   rol: "Roles",
 };
+
+/**
+ * El motivo cuando el administrador no escribió uno (SPEC-012). Solo se usa
+ * si el cambio no afecta aprobadas: con impacto, el motivo lo escribe él,
+ * porque de esa novedad salen las decisiones de reapertura.
+ */
+export function motivoPorDefecto(cambios: CambioParametro[]): string {
+  if (cambios.length === 0) return "";
+  const ambitos = new Set(cambios.map((c) => c.ambito));
+  if (ambitos.size > 1) return "Cambios de parámetros";
+  if (ambitos.has("limite")) return "Cambio en los límites del formato";
+  if (ambitos.has("regla")) {
+    const dedicaciones = new Set(cambios.map((c) => c.parametro.split(" · ")[0]));
+    return dedicaciones.size === 1
+      ? `Cambio en la dedicación ${[...dedicaciones][0]}`
+      : "Cambios en la dedicación docente";
+  }
+  const c = cambios[0];
+  if (cambios.length === 1 && c.antes === null) return `Creación del rol ${c.despues}`;
+  if (cambios.length === 1 && c.parametro.endsWith(" · estado")) {
+    const nombre = c.parametro.split(" · ")[1];
+    return `${c.despues === "Inactivo" ? "Desactivación" : "Reactivación"} del rol ${nombre}`;
+  }
+  const ids = new Set(cambios.map((x) => x.parametro.split(" · ")[0]));
+  return ids.size === 1 ? `Cambio en el ${[...ids][0].toLowerCase()}` : `Cambios en ${ids.size} roles`;
+}
+
+/**
+ * Novedad u observación (SPEC-013). Las dos son un cambio de parámetros con
+ * su rastro; las separa el momento. Con la convocatoria **abierta** es una
+ * observación: los coordinadores todavía están cargando y el ajuste es parte
+ * de preparar el periodo. Con la convocatoria **cerrada** es una novedad: lo
+ * entregado ya se está revisando y el cambio puede tocar lo aprobado.
+ *
+ * Sale de `conConvocatoriaCerrada`, que se fija al registrar y no cambia: un
+ * registro no pasa de una clase a otra porque la convocatoria se cierre después.
+ */
+export type ClaseRegistro = "novedad" | "observacion";
+
+export const claseDe = (n: Novedad): ClaseRegistro => (n.conConvocatoriaCerrada ? "novedad" : "observacion");
+
+export const ETIQUETA_CLASE: Record<ClaseRegistro, { singular: string; plural: string }> = {
+  novedad: { singular: "Novedad", plural: "Novedades" },
+  observacion: { singular: "Observación", plural: "Observaciones" },
+};
+
+/**
+ * El número que se muestra: cada clase cuenta por su lado (novedad N.º 1,
+ * observación N.º 1). `numero` sigue siendo el consecutivo general que
+ * guarda la base; este se deriva de él y no cambia, porque nada se borra.
+ */
+export const numeroEnSuClase = (todas: Novedad[], n: Novedad): number =>
+  todas.filter((x) => claseDe(x) === claseDe(n) && x.numero <= n.numero).length;
+
+/** "Novedad N.º 3" / "Observación N.º 5". */
+export const tituloDe = (todas: Novedad[], n: Novedad): string =>
+  `${ETIQUETA_CLASE[claseDe(n)].singular} N.º ${numeroEnSuClase(todas, n)}`;
+
+/** Cada clase vive en su propia sección: se consultan en momentos distintos. */
+export const RUTA_CLASE: Record<ClaseRegistro, string> = {
+  novedad: "/admin/novedades",
+  observacion: "/admin/observaciones",
+};
+
+export const rutaDe = (n: Novedad): string => `${RUTA_CLASE[claseDe(n)]}/${n.id}`;

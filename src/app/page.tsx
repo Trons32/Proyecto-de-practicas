@@ -41,7 +41,7 @@ export default function Inicio() {
     };
   }, [asignaciones, config]);
 
-  // Hasta que localStorage se rehidrate, el estado real es desconocido:
+  // Hasta que los stores se rehidraten desde la base, el estado real es desconocido:
   // pintar "no hay asignaciones" sería mentir por un instante.
   if (!hidratado) {
     return (

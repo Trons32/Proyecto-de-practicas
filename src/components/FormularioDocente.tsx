@@ -128,10 +128,14 @@ export default function FormularioDocente({
       ? (CONTRATOS[docente.tipoContrato]?.[docente.dedicacion] ?? [])
       : [];
 
-  const OPCIONES_ROL = useMemo(
-    () => roles.map((r) => ({ valor: String(r.id), texto: r.nombre })),
-    [roles]
-  );
+  // Los inactivos no se ofrecen, salvo el que el docente ya tiene: si no,
+  // el desplegable lo mostraría vacío y parecería que se perdió (SPEC-012).
+  const OPCIONES_ROL = useMemo(() => {
+    const enUso = new Set([...docente.descargas, ...docente.administrativas].map((x) => x.rolId));
+    return roles
+      .filter((r) => !r.inactivo || enUso.has(r.id))
+      .map((r) => ({ valor: String(r.id), texto: r.inactivo ? `${r.nombre} (inactivo)` : r.nombre }));
+  }, [roles, docente.descargas, docente.administrativas]);
 
   const regla = reglas[docente.dedicacion];
 

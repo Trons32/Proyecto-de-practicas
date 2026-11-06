@@ -10,18 +10,17 @@ import {
   MAX_DESCARGAS,
   MAX_ADMINISTRATIVAS,
   type ReglaDedicacion,
-  type Rol as RolDescarga,
 } from "@/lib/catalogos";
 import { finDelDia, type Convocatoria } from "@/lib/convocatoria";
-import type { Limites, Parametros } from "@/lib/novedades";
+import type { Limites, Parametros, RolParametro } from "@/lib/novedades";
 
 export type { Limites };
 
 interface ConfigStore {
   /** Topes de horas y horas de apoyo, por dedicación. */
   reglas: Record<string, ReglaDedicacion>;
-  /** Roles que pueden elegirse en descargas y actividades administrativas. */
-  roles: RolDescarga[];
+  /** Roles de descargas y actividades administrativas; los inactivos no se ofrecen. */
+  roles: RolParametro[];
   limites: Limites;
   /** Los plazos de entrega, indexados por periodo académico. */
   convocatorias: Record<string, Convocatoria>;

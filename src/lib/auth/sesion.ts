@@ -67,37 +67,28 @@ export function buscarUsuarioDePrueba(email: string, clave: string): Usuario | n
   return { id: encontrado.id, nombres: encontrado.nombres, email: encontrado.email, rol: encontrado.rol };
 }
 
-const EN_SQL = process.env.NEXT_PUBLIC_ALMACEN === "sql";
-
 /**
- * Valida las credenciales. Con SQL (SPEC-008) las valida el servidor, que
- * deja una cookie firmada: sin ella la API no responde. `recordarme` decide
- * si esa cookie sobrevive al cierre del navegador.
+ * Valida las credenciales en el servidor (SPEC-008), que deja una cookie
+ * firmada: sin ella la API no responde. `recordarme` decide si esa cookie
+ * sobrevive al cierre del navegador.
  */
 export async function autenticar(email: string, clave: string, recordarme = false): Promise<ResultadoAuth> {
-  if (EN_SQL) {
-    try {
-      const r = await fetch("/api/sesion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, clave, recordarme }),
-      });
-      const cuerpo = await r.json().catch(() => ({}));
-      return r.ok ? { ok: true, usuario: cuerpo.usuario } : { ok: false, mensaje: cuerpo.mensaje ?? "Credenciales incorrectas." };
-    } catch {
-      return { ok: false, mensaje: "No hay conexión con el servidor." };
-    }
+  try {
+    const r = await fetch("/api/sesion", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, clave, recordarme }),
+    });
+    const cuerpo = await r.json().catch(() => ({}));
+    return r.ok ? { ok: true, usuario: cuerpo.usuario } : { ok: false, mensaje: cuerpo.mensaje ?? "Credenciales incorrectas." };
+  } catch {
+    return { ok: false, mensaje: "No hay conexión con el servidor." };
   }
-
-  // Retardo breve: sin él el spinner parpadea y la espera se siente rota.
-  await new Promise((r) => setTimeout(r, 400));
-  const usuario = buscarUsuarioDePrueba(email, clave);
-  return usuario ? { ok: true, usuario } : { ok: false, mensaje: "Credenciales incorrectas." };
 }
 
-/** Borra la cookie del servidor. Sin SQL no hay nada que borrar allá. */
+/** Borra la cookie del servidor. */
 export function cerrarEnServidor(): void {
-  if (EN_SQL) void fetch("/api/sesion", { method: "DELETE" }).catch(() => {});
+  void fetch("/api/sesion", { method: "DELETE" }).catch(() => {});
 }
 
 /** Dónde aterriza cada rol tras iniciar sesión. */

@@ -1,22 +1,15 @@
 /**
- * Dónde se guardan los datos: el único punto a cambiar para pasar a SQL.
- *
- * Los stores no saben dónde persisten; reciben `almacenamiento()` en su
- * opción `storage`. Por defecto es localStorage; con
- * `NEXT_PUBLIC_ALMACEN=sql` es PostgreSQL a través de `/api/estado`. Las
- * vistas no cambian: ya esperan a `hidratado` antes de pintar, que es justo
- * lo que exige una carga remota.
+ * Dónde se guardan los datos: siempre en PostgreSQL, a través de
+ * `/api/estado`. Los stores reciben `almacenamiento()` en su opción
+ * `storage`; las vistas esperan a `hidratado` antes de pintar, que es justo
+ * lo que exige una carga remota. No hay copia en localStorage: dos
+ * navegadores con datos distintos es lo que se quiso eliminar.
  *
  * La sesión queda fuera a propósito: "Recordarme" elige entre dos destinos y
  * `sesion-store.ts` lo maneja a mano (ver AGENTS.md).
  */
 
-import {
-  createJSONStorage,
-  type PersistStorage,
-  type StateStorage,
-  type StorageValue,
-} from "zustand/middleware";
+import type { PersistStorage, StorageValue } from "zustand/middleware";
 
 /** Las claves de cada store. Cambiarlas deja huérfano lo ya guardado. */
 export const CLAVES = {
@@ -24,36 +17,6 @@ export const CLAVES = {
   configuracion: "cecar-configuracion",
   novedades: "cecar-novedades",
 } as const;
-
-/**
- * localStorage, sin reventar. En modo privado o con el almacenamiento lleno
- * el acceso lanza; perder la persistencia es mejor que perder la página.
- */
-const almacenLocal: StateStorage = {
-  getItem: (clave) => {
-    try {
-      return localStorage.getItem(clave);
-    } catch {
-      return null;
-    }
-  },
-  setItem: (clave, valor) => {
-    try {
-      localStorage.setItem(clave, valor);
-    } catch {
-      // Sin espacio o sin permiso: se sigue trabajando en memoria.
-    }
-  },
-  removeItem: (clave) => {
-    try {
-      localStorage.removeItem(clave);
-    } catch {
-      // Nada que borrar si no hay acceso.
-    }
-  },
-};
-
-// ── PostgreSQL, a través de /api/estado (SPEC-006) ───────────
 
 /** Las colecciones que se envían por diferencia; la configuración va entera. */
 const COLECCION: Record<string, "asignaciones" | "novedades" | undefined> = {
@@ -78,6 +41,8 @@ const ultimaConfig = new Map<string, string>();
 const leidas = new Set<string>();
 /** En orden: una reapertura apunta a una novedad que debe existir antes. */
 let cola: Promise<void> = Promise.resolve();
+/** Cada escritura rechazada, en orden; `esperarGuardado` mira las nuevas. */
+const fallos: string[] = [];
 
 function recordar(clave: string, state: Record<string, unknown>) {
   const coleccion = COLECCION[clave];
@@ -161,6 +126,7 @@ const almacenRemoto: PersistStorage<unknown> = {
           void import("@/lib/toast").then(({ sileo }) =>
             sileo.warning({ title: "La sesión venció", description: "Inicie sesión de nuevo; el último cambio no se guardó." })
           );
+          fallos.push("La sesión venció. Inicie sesión de nuevo.");
           const { useSesionStore } = await import("@/lib/stores/sesion-store");
           useSesionStore.getState().cerrar();
           return;
@@ -169,12 +135,15 @@ const almacenRemoto: PersistStorage<unknown> = {
           const { mensaje } = await r.json().catch(() => ({ mensaje: `Error ${r.status}.` }));
           // 409: otro usuario movió la asignación y esta copia quedó vieja.
           // Reintentar no sirve; hay que traer lo que hay en la base.
-          avisar(r.status === 409 ? `${mensaje} Recargue la página para ver la versión vigente.` : mensaje);
+          const texto = r.status === 409 ? `${mensaje} Recargue la página para ver la versión vigente.` : mensaje;
+          fallos.push(texto);
+          avisar(texto);
           // No se recuerda: el siguiente cambio reintentará lo pendiente.
           return;
         }
         recordar(clave, state);
       } catch {
+        fallos.push("El servidor no respondió.");
         avisar("El servidor no respondió. Se reintentará con el próximo cambio.");
       }
     });
@@ -184,7 +153,20 @@ const almacenRemoto: PersistStorage<unknown> = {
 };
 
 /** El almacenamiento que usan los stores con `persist`. */
-export const almacenamiento = <S>(): PersistStorage<S> | undefined =>
-  process.env.NEXT_PUBLIC_ALMACEN === "sql"
-    ? (almacenRemoto as PersistStorage<S>)
-    : createJSONStorage<S>(() => almacenLocal);
+export const almacenamiento = <S>(): PersistStorage<S> => almacenRemoto as PersistStorage<S>;
+
+/**
+ * Espera a que la base confirme todo lo que se mandó a guardar hasta ahora.
+ * Devuelve el primer error de esas escrituras, o `null` si todas pasaron.
+ *
+ * `persist` llama a `setItem` dentro del mismo `set()`, así que lo que la
+ * acción acaba de cambiar ya está en la cola cuando se llama a esto. Lo usa
+ * `aplicarParametros` (SPEC-012): el modal solo se cierra con el dato en la base.
+ */
+export function marcaDeGuardado(): () => Promise<string | null> {
+  const desde = fallos.length;
+  return async () => {
+    await cola;
+    return fallos[desde] ?? null;
+  };
+}

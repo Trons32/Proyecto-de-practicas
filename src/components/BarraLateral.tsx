@@ -13,6 +13,7 @@ import {
   FiMenu,
   FiSliders,
   FiBell,
+  FiEye,
   FiDatabase,
 } from "./iconos";
 import type { IconType } from "react-icons";
@@ -54,6 +55,7 @@ const MENU: Record<Rol, Enlace[]> = {
       tambien: ["/asignacion"],
     },
     { icono: FiBell, texto: "Novedades", href: "/admin/novedades" },
+    { icono: FiEye, texto: "Observaciones", href: "/admin/observaciones" },
     { icono: FiDatabase, texto: "Respaldo", href: "/admin/datos" },
     { icono: FiBarChart2, texto: "Reportes", href: "/admin/reportes" },
     { icono: FiUsers, texto: "Usuarios" },

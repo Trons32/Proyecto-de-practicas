@@ -4,12 +4,9 @@
  */
 import { cookies } from "next/headers";
 import { DURACION_SESION_MS } from "@/lib/auth/sesion";
-import { sqlHabilitado } from "@/lib/servidor/bd";
 import { COOKIE_SESION, firmarSesion, verificarCredenciales } from "@/lib/servidor/sesion";
 
 export async function POST(req: Request) {
-  if (!sqlHabilitado()) return Response.json({ mensaje: "El servidor no está habilitado." }, { status: 503 });
-
   const cuerpo = await req.json().catch(() => null);
   const email = typeof cuerpo?.email === "string" ? cuerpo.email : "";
   const clave = typeof cuerpo?.clave === "string" ? cuerpo.clave : "";

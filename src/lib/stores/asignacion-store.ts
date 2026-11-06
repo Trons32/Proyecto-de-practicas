@@ -24,7 +24,7 @@ export interface Autor {
 interface AsignacionStore {
   /** Todas las asignaciones, incluido el histórico. */
   asignaciones: Asignacion[];
-  /** El estado persistido ya se rehidrató desde localStorage. */
+  /** El estado persistido ya se rehidrató desde la base. */
   hidratado: boolean;
 
   setHidratado: (v: boolean) => void;

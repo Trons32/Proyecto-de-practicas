@@ -7,10 +7,8 @@
  * Exige la cookie de sesión (SPEC-008). Leer puede cualquier usuario;
  * parámetros y novedades solo los escribe el administrador, y en las
  * asignaciones cada evento nuevo tiene que ser de quien tiene la sesión.
- * Responde 503 salvo que el servidor tenga `ALMACEN=sql`.
  */
 import { CLAVES } from "@/lib/datos/almacen";
-import { sqlHabilitado } from "@/lib/servidor/bd";
 import { CambioRechazado, DatoRechazado, esRechazoDeLaBase, guardarAsignaciones, guardarConfiguracion, guardarNovedades } from "@/lib/servidor/escribir";
 import { leerAsignaciones, leerConfiguracion, leerNovedades } from "@/lib/servidor/leer";
 import { usuarioActual } from "@/lib/servidor/sesion";
@@ -25,7 +23,6 @@ const nombreDe = (clave: string) =>
 const error = (status: number, mensaje: string) => Response.json({ mensaje }, { status });
 
 export async function GET(_req: Request, ctx: { params: Promise<{ clave: string }> }) {
-  if (!sqlHabilitado()) return error(503, "El almacenamiento SQL no está habilitado.");
   const nombre = nombreDe((await ctx.params).clave);
   if (!nombre) return error(404, "Clave desconocida.");
   if (!(await usuarioActual())) return error(401, "Inicie sesión.");
@@ -43,7 +40,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clave: string 
 }
 
 export async function PUT(req: Request, ctx: { params: Promise<{ clave: string }> }) {
-  if (!sqlHabilitado()) return error(503, "El almacenamiento SQL no está habilitado.");
   const nombre = nombreDe((await ctx.params).clave);
   if (!nombre) return error(404, "Clave desconocida.");
 

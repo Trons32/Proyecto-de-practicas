@@ -118,8 +118,8 @@ function generar(r: Respaldo): string {
   // aplicación eliminó, no vigentes (las cerradas pueden seguir usándolos).
   for (const rol of c.roles) {
     l.push(
-      `INSERT INTO public.rol (id, nombre, tipo, reclasificado) VALUES (${rol.id}, ${txt(rol.nombre)}, '${rol.tipo}', ${bit(Boolean(rol.reclasificado))}) ` +
-        `ON CONFLICT (id) DO UPDATE SET nombre = EXCLUDED.nombre, tipo = EXCLUDED.tipo, vigente = TRUE;`
+      `INSERT INTO public.rol (id, nombre, tipo, reclasificado, vigente) VALUES (${rol.id}, ${txt(rol.nombre)}, '${rol.tipo}', ${bit(Boolean(rol.reclasificado))}, ${bit(!rol.inactivo)}) ` +
+        `ON CONFLICT (id) DO UPDATE SET nombre = EXCLUDED.nombre, tipo = EXCLUDED.tipo, vigente = EXCLUDED.vigente;`
     );
   }
   l.push(`UPDATE public.rol SET vigente = FALSE WHERE id NOT IN (${c.roles.map((x) => x.id).join(", ") || "NULL"});`);

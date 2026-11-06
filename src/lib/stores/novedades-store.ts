@@ -2,10 +2,11 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { almacenamiento, CLAVES } from "@/lib/datos/almacen";
+import { almacenamiento, CLAVES, marcaDeGuardado } from "@/lib/datos/almacen";
 import {
   diferenciasParametros,
   fotoDeImpacto,
+  motivoPorDefecto,
   novedadDeAfectada,
   decisionVigente,
   periodoDeReferencia,
@@ -29,11 +30,13 @@ interface NovedadesStore {
   setHidratado: (v: boolean) => void;
 
   /**
-   * La única forma de cambiar los parámetros. Aplica el borrador, y en la
+   * La única forma de cambiar los parámetros. Aplica `siguiente` y en la
    * misma operación registra la novedad con sus diferencias y la foto de lo
-   * que afectó. Devuelve la novedad, o `null` si no había nada que cambiar.
+   * que afectó. Se resuelve cuando la base confirmó las dos escrituras; si
+   * alguna falla, deshace en memoria y devuelve el error (SPEC-012). El
+   * motivo vacío se reemplaza por `motivoPorDefecto`, salvo con impacto.
    */
-  aplicarParametros: (borrador: Parametros, motivo: string, autor: Autor) => Novedad | null;
+  aplicarParametros: (siguiente: Parametros, motivo: string, autor: Autor) => Promise<ResultadoAplicar>;
 
   /**
    * Reabre asignaciones aprobadas y deja la decisión en la novedad que las
@@ -53,6 +56,8 @@ interface NovedadesStore {
   marcarSinAccion: (novedadId: string, asignacionId: string, autor: Autor, nota?: string) => void;
 }
 
+export type ResultadoAplicar = { ok: true; novedad: Novedad } | { ok: false; error: string };
+
 export const useNovedadesStore = create<NovedadesStore>()(
   persist(
     (set, get) => {
@@ -69,7 +74,7 @@ export const useNovedadesStore = create<NovedadesStore>()(
         hidratado: false,
         setHidratado: (hidratado) => set({ hidratado }),
 
-        aplicarParametros: (borrador, motivo, autor) => {
+        aplicarParametros: async (borrador, motivo, autor) => {
           const config = useConfigStore.getState();
           const vigentes: Parametros = {
             reglas: config.reglas,
@@ -78,7 +83,7 @@ export const useNovedadesStore = create<NovedadesStore>()(
           };
 
           const cambios = diferenciasParametros(vigentes, borrador);
-          if (cambios.length === 0 || !motivo.trim()) return null;
+          if (cambios.length === 0) return { ok: false, error: "No hay cambios que guardar." };
 
           // La foto se toma antes de aplicar, con las dos configuraciones a
           // mano: después ya no habría forma de saber cuál era la anterior.
@@ -87,6 +92,11 @@ export const useNovedadesStore = create<NovedadesStore>()(
             { roles: borrador.roles, reglas: borrador.reglas },
             { roles: vigentes.roles, reglas: vigentes.reglas }
           );
+          // Con impacto, el motivo lo escribe el administrador: de esa novedad
+          // salen las decisiones de reapertura (SPEC-012).
+          if (!motivo.trim() && afectadas.length > 0) {
+            return { ok: false, error: "Este cambio afecta asignaciones aprobadas: escriba el motivo." };
+          }
           const { periodo, cerrada } = periodoDeReferencia(config.convocatorias);
 
           const novedad: Novedad = {
@@ -97,15 +107,30 @@ export const useNovedadesStore = create<NovedadesStore>()(
             rolAutor: autor.rol,
             periodo,
             conConvocatoriaCerrada: cerrada,
-            motivo: motivo.trim(),
+            motivo: motivo.trim() || motivoPorDefecto(cambios),
             cambios,
             afectadas,
             decisiones: [],
           };
 
+          // En dos tiempos: si la configuración no se guarda, la novedad no
+          // se envía; una novedad sin el cambio que describe mentiría.
+          let esperar = marcaDeGuardado();
           config.reemplazarParametros(borrador);
-          set((s) => ({ novedades: [...s.novedades, novedad] }));
-          return novedad;
+          let error = await esperar();
+          if (!error) {
+            esperar = marcaDeGuardado();
+            set((s) => ({ novedades: [...s.novedades, novedad] }));
+            error = await esperar();
+            if (error) set((s) => ({ novedades: s.novedades.filter((n) => n.id !== novedad.id) }));
+          }
+          if (error) {
+            // Lo que no llegó a la base no queda en pantalla. Si la
+            // configuración sí llegó, deshacerla la vuelve a escribir.
+            useConfigStore.getState().reemplazarParametros(vigentes);
+            return { ok: false, error };
+          }
+          return { ok: true, novedad };
         },
 
         solicitarCorreccion: (ids, autor, nota, plazo, novedadId) => {

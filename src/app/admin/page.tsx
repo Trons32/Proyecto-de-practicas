@@ -16,6 +16,7 @@ import {
   FiBarChart2,
   FiArrowRight,
   FiBell,
+  FiEye,
   FiDatabase,
 } from "@/components/iconos";
 
@@ -37,8 +38,14 @@ const MODULOS = [
   {
     icono: FiBell,
     titulo: "Novedades",
-    texto: "Quién cambió qué parámetro, cuándo y por qué, y a qué asignaciones aprobadas afectó.",
+    texto: "Cambios de parámetros con la convocatoria cerrada y las asignaciones aprobadas que afectaron.",
     href: "/admin/novedades",
+  },
+  {
+    icono: FiEye,
+    titulo: "Observaciones",
+    texto: "Cambios de parámetros hechos mientras la convocatoria está abierta.",
+    href: "/admin/observaciones",
   },
   {
     icono: FiDatabase,

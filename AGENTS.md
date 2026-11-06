@@ -15,9 +15,9 @@ Excel (`ASIGNACION_IS_2026_2PV3.xlsx`): el coordinador registra los docentes de
 su programa, reparte horas entre cursos, descargas y actividades
 administrativas, y el sistema le dice si la carga cuadra con la dedicación.
 
-Next.js 16 · App Router · React 19 · Tailwind v4 · Zustand. Por defecto todo
-vive en el navegador; con `NEXT_PUBLIC_ALMACEN=sql` persiste en PostgreSQL vía Prisma (SPEC-011)
-(SPEC-006), con sesión en el servidor (SPEC-008).
+Next.js 16 · App Router · React 19 · Tailwind v4 · Zustand. Los datos
+persisten siempre en PostgreSQL vía Prisma (SPEC-006, SPEC-011), con sesión
+en el servidor (SPEC-008). No hay modo localStorage.
 
 ---
 
@@ -57,14 +57,14 @@ No hay server actions. Cada página empieza con `"use client"` y el estado
 vive en tres stores de Zustand:
 
 ```
-lib/stores/asignacion-store.ts   las asignaciones   → localStorage (persist)
-lib/stores/config-store.ts       la parametrización → localStorage (persist)
-lib/stores/novedades-store.ts    las novedades      → localStorage (persist)
+lib/stores/asignacion-store.ts   las asignaciones   → PostgreSQL (persist)
+lib/stores/config-store.ts       la parametrización → PostgreSQL (persist)
+lib/stores/novedades-store.ts    las novedades      → PostgreSQL (persist)
 lib/stores/sesion-store.ts       la sesión          → local o session, a mano
 ```
 
-Los tres primeros no tocan localStorage: persisten por `almacenamiento()` de
-`lib/datos/almacen.ts`. Con `NEXT_PUBLIC_ALMACEN=sql` ese adaptador habla con
+Los tres primeros persisten por `almacenamiento()` de
+`lib/datos/almacen.ts`. Ese adaptador habla con
 `/api/estado/[clave]` (`lib/servidor/`) y envía **solo lo que cambió**, para
 que un cliente no borre lo que creó otro. No añadas otro `localStorage`
 suelto ni cambies las claves de `CLAVES`: los datos guardados quedarían
@@ -79,7 +79,7 @@ scripts): lleva las credenciales de la base.
 
 ### 1. Nada se pinta antes de `hidratado`
 
-Los stores se rehidratan desde `localStorage` **después** del primer render. Si
+Los stores se rehidratan desde la base (`/api/estado`) **después** del primer render. Si
 lees `asignaciones` sin esperar, el usuario ve "no hay asignaciones" durante un
 parpadeo y luego aparecen. Por eso cada store expone `hidratado` y cada vista lo
 respeta:
@@ -190,12 +190,22 @@ tocar lo ya cerrado; esa decisión es suya.
 
 ### 7. Los parámetros solo cambian con una novedad
 
-`/admin/parametros` edita un **borrador**; nada se aplica al teclear. Al
-aplicar, `aplicarParametros` del store de novedades cambia la configuración
+En `/admin/parametros` cada cosa se edita en su propio modal y se guarda al
+pulsar Guardar (SPEC-012); no hay borrador de página. Guardar llama a
+`aplicarParametros` del store de novedades, que cambia la configuración
 **y** registra la novedad (autor, motivo, antes → después, foto de las
-aprobadas afectadas) en una sola operación. `config-store` ya no expone
+aprobadas afectadas), y **espera a que la base confirme**: si falla, deshace
+y el modal muestra el error. El motivo es opcional salvo que el cambio
+afecte aprobadas (`motivoPorDefecto` lo rellena). Los roles no se borran:
+se **desactivan** (`inactivo`, en la base `rol.vigente = false`) y siguen
+sumando horas donde ya se usan. `config-store` ya no expone
 acciones sueltas por campo: `reemplazarParametros` existe solo para que lo
 llame ese store. No lo uses desde una vista, o el cambio queda sin rastro.
+
+Cada registro es **novedad** (convocatoria cerrada) u **observación**
+(convocatoria abierta), según `claseDe()` de `lib/novedades.ts` (SPEC-013).
+Es la única definición; la clase se fija al registrar y no cambia. Para
+mostrarlo usa `tituloDe()`, no `numero` (cada clase numera por su lado).
 
 Igual con las reaperturas por parámetros: pasa por `solicitarCorreccion` del
 store de novedades, que llama a `reabrirVarias` y deja la decisión en la
@@ -241,7 +251,8 @@ app/asignacion/[id]/docente/[docenteId]   la ficha: cursos, descargas, horas
 app/admin                        panel del administrador
 app/admin/parametros             roles, reglas y límites en runtime
 app/admin/asignaciones           bandejas: aprobar, devolver, abrir convocatorias
-app/admin/novedades              cambios de parámetros y a quién afectaron
+app/admin/novedades              cambios con la convocatoria cerrada y a quién afectaron
+app/admin/observaciones          cambios con la convocatoria abierta
 app/admin/datos                  respaldo: exportar e importar todo en JSON
 app/admin/reportes               reportes; el cuadro resumen del consolidado
 

@@ -1,38 +1,24 @@
 "use client";
 
-import { useRef, useState } from "react";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
 import { useConfigStore } from "@/lib/stores/config-store";
 import { useNovedadesStore } from "@/lib/stores/novedades-store";
 import { useSesionStore } from "@/lib/stores/sesion-store";
-import {
-  leerRespaldo,
-  nombreDeArchivo,
-  resumenRespaldo,
-  type Respaldo,
-} from "@/lib/datos/respaldo";
-import { respaldoActual, restaurarRespaldo } from "@/lib/datos/respaldo-stores";
-import { fechaHoraLegible } from "@/lib/convocatoria";
+import { nombreDeArchivo } from "@/lib/datos/respaldo";
+import { respaldoActual } from "@/lib/datos/respaldo-stores";
 import Encabezado from "@/components/Encabezado";
-import ModalConfirmacion from "@/components/ModalConfirmacion";
 import { Boton } from "@/components/ui";
 import { sileo } from "@/lib/toast";
-import { FiDownload, FiUpload } from "@/components/iconos";
+import { FiDownload } from "@/components/iconos";
 
 /**
- * Respaldo de datos: exportar e importar todo el estado en un JSON.
+ * Respaldo de datos: exportar todo el estado de la base en un JSON.
  *
- * Mientras no haya base de datos, lo registrado vive en un solo navegador.
- * Esta página es la salida de emergencia —y el puente para migrar a SQL—:
- * el archivo tiene la forma que recibirá la API.
- *
- * Con PostgreSQL (SPEC-006) importar queda deshabilitado: reemplazar todo
- * desde el navegador se saltaría el ciclo de vida que el servidor hace
- * cumplir, y el servidor lo rechazaría a medias. Un respaldo se carga en la
- * base con `db/respaldo-a-sql.ts`, que lo revisa antes.
+ * Importar no se hace desde aquí: reemplazar todo desde el navegador se
+ * saltaría el ciclo de vida que el servidor hace cumplir, y el servidor lo
+ * rechazaría a medias. Un respaldo se carga en la base con
+ * `db/respaldo-a-sql.ts`, que lo revisa antes.
  */
-const EN_SQL = process.env.NEXT_PUBLIC_ALMACEN === "sql";
-
 export default function RespaldoDatos() {
   const asignaciones = useAsignacionStore((s) => s.asignaciones);
   const hidratadoA = useAsignacionStore((s) => s.hidratado);
@@ -40,9 +26,6 @@ export default function RespaldoDatos() {
   const novedades = useNovedadesStore((s) => s.novedades);
   const hidratadoN = useNovedadesStore((s) => s.hidratado);
   const usuario = useSesionStore((s) => s.sesion?.usuario ?? null);
-
-  const archivo = useRef<HTMLInputElement>(null);
-  const [porImportar, setPorImportar] = useState<Respaldo | null>(null);
 
   if (!hidratadoA || !hidratadoC || !hidratadoN) {
     return (
@@ -66,28 +49,7 @@ export default function RespaldoDatos() {
     sileo.success({ title: "Respaldo descargado", description: a.download });
   };
 
-  const elegir = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    // Se vacía para que elegir el mismo archivo otra vez vuelva a dispararlo.
-    e.target.value = "";
-    if (!f) return;
-    const lectura = leerRespaldo(await f.text());
-    if (!lectura.ok) {
-      sileo.error({ title: "No se puede importar", description: lectura.error });
-      return;
-    }
-    setPorImportar(lectura.respaldo);
-  };
-
-  const importar = () => {
-    if (!porImportar) return;
-    restaurarRespaldo(porImportar);
-    setPorImportar(null);
-    sileo.success({ title: "Respaldo importado", description: "Los datos se reemplazaron." });
-  };
-
   const docentes = asignaciones.reduce((s, a) => s + a.docentes.length, 0);
-  const r = porImportar ? resumenRespaldo(porImportar) : null;
 
   return (
     <main className="px-4 py-6 sm:p-8">
@@ -100,7 +62,7 @@ export default function RespaldoDatos() {
         <section className="tarjeta tarjeta-sombra p-5">
           <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">Exportar</h3>
           <p className="mt-1 text-sm text-[var(--color-texto-suave)]">
-            Descarga todo lo registrado {EN_SQL ? "en la base de datos" : "en este navegador"}: {asignaciones.length} asignaciones,{" "}
+            Descarga todo lo registrado en la base de datos: {asignaciones.length} asignaciones,{" "}
             {docentes} docentes y {novedades.length} novedades, con sus bitácoras y la
             parametrización vigente.
           </p>
@@ -112,46 +74,12 @@ export default function RespaldoDatos() {
         <section className="tarjeta tarjeta-sombra p-5">
           <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">Importar</h3>
           <p className="mt-1 text-sm text-[var(--color-texto-suave)]">
-            {EN_SQL
-              ? "Los datos viven en la base de datos. Para cargar un respaldo, el encargado de la base lo convierte con db/respaldo-a-sql.ts, que lo revisa antes de tocar nada."
-              : "Reemplaza todos los datos actuales por los del archivo. Descargue antes un respaldo si quiere conservar lo que hay."}
+            Los datos viven en la base de datos. Para cargar un respaldo, el encargado de la base lo
+            convierte con db/respaldo-a-sql.ts, que lo revisa antes de tocar nada.
           </p>
-          <input
-            ref={archivo}
-            type="file"
-            accept=".json,application/json"
-            onChange={elegir}
-            className="hidden"
-            aria-hidden
-            tabIndex={-1}
-          />
-          <Boton
-            variante="secundario"
-            className="mt-4"
-            disabled={EN_SQL}
-            onClick={() => archivo.current?.click()}
-          >
-            <FiUpload aria-hidden /> Elegir archivo
-          </Boton>
         </section>
       </div>
 
-      <ModalConfirmacion
-        abierto={porImportar !== null}
-        onCerrar={() => setPorImportar(null)}
-        onConfirmar={importar}
-        titulo="Reemplazar los datos"
-        mensaje="Todo lo registrado en este navegador se sustituirá por el contenido del respaldo. No se puede deshacer."
-        detalle={
-          porImportar && r
-            ? `Exportado por ${porImportar.exportadoPor} el ${fechaHoraLegible(porImportar.exportado)}: ` +
-              `${r.asignaciones} asignaciones, ${r.docentes} docentes, ${r.roles} roles, ` +
-              `${r.convocatorias} convocatorias y ${r.novedades} novedades.`
-            : undefined
-        }
-        etiquetaConfirmar="Reemplazar"
-        peligro
-      />
     </main>
   );
 }

@@ -50,8 +50,10 @@ convocatoria y de las asignaciones que afectaron. Antes:
 - **CA-003.3** Dada una novedad con afectadas, cuando se solicita corrección
   a una, entonces se registra la decisión con su plazo y la bitácora de esa
   asignación enlaza a la novedad.
-- **CA-003.4** Dados cambios en el borrador, cuando se intenta aplicar sin
-  motivo, entonces no se aplican.
+- **CA-003.4** ~~Dados cambios en el borrador, cuando se intenta aplicar sin
+  motivo, entonces no se aplican.~~ Reemplazado por SPEC-012: el motivo es
+  obligatorio solo si el cambio afecta aprobadas; si no, se registra uno
+  generado.
 - **CA-003.5** Dada una sesión de coordinador, cuando abre
   `/admin/novedades`, entonces no ve contenido y vuelve a su inicio.
 - **CA-003.6** Dada una novedad, no existe forma de editarla ni borrarla.

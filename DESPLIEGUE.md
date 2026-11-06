@@ -102,8 +102,9 @@ activo en `public.usuario` (paso 1.3); de ahí sale el rol.
 
 ## 3. Compilar y arrancar
 
-`NEXT_PUBLIC_ALMACEN=sql` se incrusta al compilar: el archivo de variables
-tiene que existir **antes** del build.
+El archivo de variables (`.env.production.local`) tiene que existir en la
+carpeta del proyecto antes de arrancar: sin `DATABASE_URL` y `SESION_SECRETO`
+la aplicación no puede leer ni guardar nada.
 
 ```bash
 git pull
@@ -121,12 +122,11 @@ curl https://planificacionacademica.cecar.edu.co/api/salud
 Debe responder `200` con:
 
 ```json
-{ "almacen": "sql", "autenticacion": "api", "base": "ok", "sesion": "ok" }
+{ "autenticacion": "api", "base": "ok", "sesion": "ok" }
 ```
 
 | Si dice                      | Revisar                                                          |
 | ---------------------------- | ---------------------------------------------------------------- |
-| `"almacen": "navegador"`     | falta `ALMACEN=sql`                                              |
 | `"base": "error"`            | `DATABASE_URL`, firewall, `pg_hba.conf`, o que falte el paso 1.2/1.4 (el detalle sale en el log del servidor) |
 | `"sesion": "falta-secreto"`  | `SESION_SECRETO` vacío o de menos de 32 caracteres               |
 

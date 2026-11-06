@@ -7,9 +7,9 @@
  * viene no se toca, para que un cliente no borre lo que otro creó.
  */
 import { Prisma } from "@/generated/prisma/client";
-import type { ReglaDedicacion, Rol } from "../catalogos";
+import type { ReglaDedicacion } from "../catalogos";
 import type { Convocatoria } from "../convocatoria";
-import type { Limites, Novedad } from "../novedades";
+import type { Limites, Novedad, RolParametro } from "../novedades";
 import type { Asignacion } from "../tipos";
 import { bd, type Cliente } from "./bd";
 import { revisarBorrado, revisarGuardado, type Actor } from "../transiciones";
@@ -190,7 +190,7 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
 
 export async function guardarConfiguracion(c: {
   reglas: Record<string, ReglaDedicacion>;
-  roles: Rol[];
+  roles: RolParametro[];
   limites: Limites;
   convocatorias: Record<string, Convocatoria>;
 }) {
@@ -210,13 +210,13 @@ export async function guardarConfiguracion(c: {
       },
     });
 
-    // Los roles que la aplicación quitó no se borran: las asignaciones
-    // cerradas los siguen referenciando. Se marcan no vigentes antes del
-    // upsert para que un nombre liberado pueda reutilizarse sin chocar.
-    await tx.rol.updateMany({ data: { vigente: false } });
+    // Los roles no se borran: las asignaciones los siguen referenciando.
+    // `inactivo` (SPEC-012) se guarda como no vigente; uno que no viene en
+    // la lista, también.
+    await tx.rol.updateMany({ where: { id: { notIn: c.roles.map((r) => r.id) } }, data: { vigente: false } });
     for (const r of c.roles) {
-      const datos = { nombre: r.nombre, tipo: r.tipo, reclasificado: Boolean(r.reclasificado) };
-      await tx.rol.upsert({ where: { id: r.id }, update: { ...datos, vigente: true }, create: { id: r.id, ...datos } });
+      const datos = { nombre: r.nombre, tipo: r.tipo, reclasificado: Boolean(r.reclasificado), vigente: !r.inactivo };
+      await tx.rol.upsert({ where: { id: r.id }, update: datos, create: { id: r.id, ...datos } });
     }
 
     for (const v of Object.values(c.convocatorias)) {

@@ -1,6 +1,6 @@
 # Base de datos · PostgreSQL + Prisma
 
-La base de la aplicación cuando corre con `ALMACEN=sql` (SPEC-006, SPEC-011).
+La base de la aplicación (SPEC-006, SPEC-011).
 Para ponerla en producción (la VPS), ver [`DESPLIEGUE.md`](../DESPLIEGUE.md).
 
 Requiere PostgreSQL 13 o posterior. La conexión es una sola variable,

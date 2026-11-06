@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { Evento, TipoEvento } from "@/lib/tipos";
 import { fechaHoraLegible, fechaLegible } from "@/lib/convocatoria";
 import { useNovedadesStore } from "@/lib/stores/novedades-store";
+import { rutaDe, tituloDe } from "@/lib/novedades";
 import { useSesionStore } from "@/lib/stores/sesion-store";
 import { Insignia } from "@/components/ui";
 
@@ -71,8 +72,10 @@ export default function Bitacora({ eventos }: { eventos: Evento[] }) {
 
               {e.novedadId && (
                 <OrigenNovedad
-                  numero={novedades.find((n) => n.id === e.novedadId)?.numero}
-                  href={esAdmin ? `/admin/novedades/${e.novedadId}` : undefined}
+                  {...(() => {
+                    const n = novedades.find((x) => x.id === e.novedadId);
+                    return { titulo: n && tituloDe(novedades, n), href: n && esAdmin ? rutaDe(n) : undefined };
+                  })()}
                 />
               )}
 
@@ -93,8 +96,8 @@ export default function Bitacora({ eventos }: { eventos: Evento[] }) {
  * De qué cambio de parámetros salió una reapertura. El coordinador no entra
  * a la zona de administración: para él es solo un dato, sin enlace.
  */
-function OrigenNovedad({ numero, href }: { numero?: number; href?: string }) {
-  const texto = numero ? `Novedad N.º ${numero}` : "Novedad de parámetros";
+function OrigenNovedad({ titulo, href }: { titulo?: string; href?: string }) {
+  const texto = titulo ?? "Cambio de parámetros";
   return (
     <p className="mt-1.5 text-xs text-[var(--color-texto-suave)]">
       Origen:{" "}

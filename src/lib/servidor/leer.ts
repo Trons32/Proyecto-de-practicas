@@ -6,9 +6,9 @@
  * en los textos, `null` en los números, y la propiedad ausente en los
  * opcionales. Así leer y volver a escribir no cambia nada (CA-006.3).
  */
-import type { ReglaDedicacion, Rol } from "../catalogos";
+import type { ReglaDedicacion } from "../catalogos";
 import type { Convocatoria } from "../convocatoria";
-import type { Limites, Novedad } from "../novedades";
+import type { Limites, Novedad, RolParametro } from "../novedades";
 import type { Asignacion, Docente, Evento } from "../tipos";
 import { bd, type Cliente } from "./bd";
 
@@ -137,7 +137,7 @@ export async function leerAsignaciones(
 
 export async function leerConfiguracion(): Promise<{
   reglas: Record<string, ReglaDedicacion>;
-  roles: Rol[];
+  roles: RolParametro[];
   limites: Limites;
   convocatorias: Record<string, Convocatoria>;
 }> {
@@ -145,7 +145,7 @@ export async function leerConfiguracion(): Promise<{
   const [reglas, l, roles, convocatorias] = await Promise.all([
     c.regla_dedicacion.findMany(),
     c.limite.findUniqueOrThrow({ where: { id: 1 } }),
-    c.rol.findMany({ where: { vigente: true }, orderBy: { id: "asc" } }),
+    c.rol.findMany({ orderBy: { id: "asc" } }),
     c.convocatoria.findMany({ orderBy: { periodo: "asc" } }),
   ]);
   return {
@@ -158,8 +158,11 @@ export async function leerConfiguracion(): Promise<{
     roles: roles.map((r) => ({
       id: r.id,
       nombre: r.nombre,
-      tipo: r.tipo as Rol["tipo"],
+      tipo: r.tipo as RolParametro["tipo"],
       ...(r.reclasificado ? { reclasificado: true } : {}),
+      // No vigente = inactivo (SPEC-012): se lee para que las asignaciones
+      // que lo usan sigan mostrando su nombre y sumando sus horas.
+      ...(r.vigente ? {} : { inactivo: true as const }),
     })),
     limites: { maxCursos: l.max_cursos, maxDescargas: l.max_descargas, maxAdministrativas: l.max_administrativas },
     convocatorias: Object.fromEntries(
