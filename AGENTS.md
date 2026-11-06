@@ -272,7 +272,7 @@ lib/servidor/verificar-sql.ts   prueba de ida y vuelta contra la base
 app/api/estado/[clave]       la API de estado (exige la cookie de sesión)
 app/api/sesion               iniciar y cerrar sesión: cookie httpOnly firmada
 lib/servidor/sesion.ts       firma de la cookie y verificarCredenciales() ← AQUÍ ENTRA ALDEA
-lib/servidor/aldea.ts        la API de credenciales + aa.usuario (SPEC-010)
+lib/servidor/aldea.ts        la API de credenciales + public.usuario (SPEC-010)
 app/api/salud                sonda del despliegue: ¿hay base y secreto?
 DESPLIEGUE.md                paso a paso para producción
 prisma/migrations/   tablas, triggers, CHECK y permisos ← SQL A MANO (ver db/README.md)

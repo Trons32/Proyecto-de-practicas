@@ -16,7 +16,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["aa"]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -30,7 +29,6 @@ model actividad {
   docente_asignado    docente_asignado @relation(fields: [docente_asignado_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_actividad_da")
   rol                 rol?             @relation(fields: [rol_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_actividad_rol")
 
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -52,14 +50,12 @@ model asignacion {
   linea_base_curso                    linea_base_curso[]
 
   @@index([periodo, estado], map: "ix_asignacion_periodo")
-  @@schema("aa")
 }
 
 model categoria {
   codigo                                                                           String                          @id(map: "pk_categoria") @db.VarChar(40)
   contrato_dedicacion_categoria_contrato_dedicacion_categoria_categoriaTocategoria contrato_dedicacion_categoria[] @relation("contrato_dedicacion_categoria_categoriaTocategoria")
 
-  @@schema("aa")
 }
 
 model contrato_dedicacion_categoria {
@@ -72,7 +68,6 @@ model contrato_dedicacion_categoria {
   docente_asignado                                                         docente_asignado[]
 
   @@id([tipo_contrato, dedicacion, categoria], map: "pk_contrato_dedicacion_categoria")
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -83,7 +78,6 @@ model convocatoria {
   cerrada_manualmente                   Boolean  @default(false)
   periodo_convocatoria_periodoToperiodo periodo  @relation("convocatoria_periodoToperiodo", fields: [periodo], references: [codigo], onDelete: NoAction, onUpdate: NoAction, map: "fk_convocatoria_periodo")
 
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -105,7 +99,6 @@ model curso_asignado {
   modalidad           String?          @db.VarChar(15)
   docente_asignado    docente_asignado @relation(fields: [docente_asignado_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_curso_da")
 
-  @@schema("aa")
 }
 
 model dedicacion {
@@ -113,7 +106,6 @@ model dedicacion {
   contrato_dedicacion_categoria_contrato_dedicacion_categoria_dedicacionTodedicacion contrato_dedicacion_categoria[] @relation("contrato_dedicacion_categoria_dedicacionTodedicacion")
   regla_dedicacion_regla_dedicacion_dedicacionTodedicacion                           regla_dedicacion?               @relation("regla_dedicacion_dedicacionTodedicacion")
 
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -123,7 +115,6 @@ model docente {
   nombres          String             @db.VarChar(150)
   docente_asignado docente_asignado[]
 
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -157,7 +148,6 @@ model docente_asignado {
 
   @@unique([asignacion_id, docente_id], map: "uq_da_docente_por_asignacion", where: raw("(docente_id IS NOT NULL)"))
   @@index([asignacion_id, orden], map: "ix_da_asignacion")
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -177,14 +167,12 @@ model evento_asignacion {
   novedad       novedad?   @relation(fields: [novedad_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_evento_novedad")
 
   @@index([asignacion_id, fecha], map: "ix_evento_asignacion")
-  @@schema("aa")
 }
 
 model facultad {
   codigo                               String     @id(map: "pk_facultad") @db.VarChar(80)
   programa_programa_facultadTofacultad programa[] @relation("programa_facultadTofacultad")
 
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -194,7 +182,6 @@ model limite {
   max_descargas       Int @db.SmallInt
   max_administrativas Int @db.SmallInt
 
-  @@schema("aa")
 }
 
 model linea_base_curso {
@@ -212,7 +199,6 @@ model linea_base_curso {
   asignacion         asignacion @relation(fields: [asignacion_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_lbc_asignacion")
 
   @@id([asignacion_id, orden], map: "pk_linea_base_curso")
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -230,7 +216,6 @@ model novedad {
   novedad_afectacion               novedad_afectacion[]
   novedad_cambio                   novedad_cambio[]
 
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -248,7 +233,6 @@ model novedad_afectacion {
   novedad_decision           novedad_decision[]
 
   @@id([novedad_id, asignacion_id], map: "pk_novedad_afectacion")
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -261,7 +245,6 @@ model novedad_afectacion_docente {
   novedad_afectacion novedad_afectacion @relation(fields: [novedad_id, asignacion_id], references: [novedad_id, asignacion_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_nad_afectacion")
 
   @@id([novedad_id, asignacion_id, orden], map: "pk_novedad_afectacion_docente")
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -275,7 +258,6 @@ model novedad_cambio {
   novedad    novedad @relation(fields: [novedad_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_nc_novedad")
 
   @@id([novedad_id, orden], map: "pk_novedad_cambio")
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -290,7 +272,6 @@ model novedad_decision {
   plazo              DateTime?          @db.Timestamptz(6)
   novedad_afectacion novedad_afectacion @relation(fields: [novedad_id, asignacion_id], references: [novedad_id, asignacion_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_nd_afectacion")
 
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -300,7 +281,6 @@ model periodo {
   convocatoria_convocatoria_periodoToperiodo convocatoria? @relation("convocatoria_periodoToperiodo")
   novedad_novedad_periodoToperiodo           novedad[]     @relation("novedad_periodoToperiodo")
 
-  @@schema("aa")
 }
 
 model programa {
@@ -312,7 +292,6 @@ model programa {
   facultad_programa_facultadTofacultad facultad     @relation("programa_facultadTofacultad", fields: [facultad], references: [codigo], onDelete: NoAction, onUpdate: NoAction, map: "fk_programa_facultad")
   usuario                              usuario[]
 
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -324,7 +303,6 @@ model regla_dedicacion {
   comunidades                                        Int        @db.SmallInt
   dedicacion_regla_dedicacion_dedicacionTodedicacion dedicacion @relation("regla_dedicacion_dedicacionTodedicacion", fields: [dedicacion], references: [codigo], onDelete: NoAction, onUpdate: NoAction, map: "fk_regla_dedicacion")
 
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -336,7 +314,6 @@ model rol {
   vigente       Boolean     @default(true)
   actividad     actividad[]
 
-  @@schema("aa")
 }
 
 model tipo_contrato {
@@ -344,7 +321,6 @@ model tipo_contrato {
   contrato_dedicacion_categoria_contrato_dedicacion_categoria_tipo_contratoTotipo_contrato contrato_dedicacion_categoria[] @relation("contrato_dedicacion_categoria_tipo_contratoTotipo_contrato")
   docente_asignado_docente_asignado_tipo_contratoTotipo_contrato                           docente_asignado[]              @relation("docente_asignado_tipo_contratoTotipo_contrato")
 
-  @@schema("aa")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -357,5 +333,4 @@ model usuario {
   activo      Boolean   @default(true)
   programa    programa? @relation(fields: [programa_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_usuario_programa")
 
-  @@schema("aa")
 }

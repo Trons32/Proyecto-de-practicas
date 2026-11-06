@@ -14,11 +14,11 @@ usuario y clave; falta conectarla y dejar el paso a SQL Server repetible.
   `api` (por defecto en producción) o `prueba`. Los usuarios de prueba
   tienen la clave publicada en el repo: en producción solo se activan si se
   pide a propósito.
-- `lib/servidor/aldea.ts`: primero busca el correo en `aa.usuario` (activo);
+- `lib/servidor/aldea.ts`: primero busca el correo en `public.usuario` (activo);
   si está, hace `POST AUTH_API_URL` con usuario y clave. Un 2xx valida,
   salvo que el cuerpo diga `valido|success|autenticado… = false`. Campos,
   token, dominio y espera se ajustan por entorno.
-- La API valida la clave; **el rol lo decide `aa.usuario`**. Estar en el
+- La API valida la clave; **el rol lo decide `public.usuario`**. Estar en el
   directorio de la universidad no da acceso.
 - `GET /api/salud`: sonda sin sesión que dice si la base responde con el
   esquema cargado y si hay secreto de sesión, sin revelar detalles.
@@ -29,7 +29,7 @@ usuario y clave; falta conectarla y dejar el paso a SQL Server repetible.
 ## Criterios de aceptación
 
 - **CA-010.1** En producción sin `AUTH_PROVEEDOR`, los usuarios de prueba no entran.
-- **CA-010.2** Clave válida en la API pero correo ausente o inactivo en `aa.usuario`: no entra.
+- **CA-010.2** Clave válida en la API pero correo ausente o inactivo en `public.usuario`: no entra.
 - **CA-010.3** API caída o lenta: el login responde "credenciales incorrectas" y no se cuelga.
 - **CA-010.4** `/api/salud` responde 503 si la base no responde o falta el secreto.
 

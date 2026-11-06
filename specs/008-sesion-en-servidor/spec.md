@@ -27,14 +27,14 @@ evento. La sesión vivía solo en el navegador.
 No hay estado en el servidor que limpiar y cerrar sesión es borrar la
 cookie. El costo: una cookie robada vale hasta que vence. Con una hora de
 duración se acepta; si sistemas exige revocar sesiones al instante, se
-añade una tabla `aa.sesion` y se consulta en `usuarioActual()`.
+añade una tabla `public.sesion` y se consulta en `usuarioActual()`.
 
 ### Decisión: Aldea entra por un solo punto
 
 `verificarCredenciales()` en `lib/servidor/sesion.ts` es lo único que
 cambia cuando sistemas defina el mecanismo (LDAP, OAuth/OIDC, un servicio
 propio). Hoy busca en los usuarios de prueba. El rol y el programa del
-coordinador los decide esta aplicación (`aa.usuario`), no Aldea.
+coordinador los decide esta aplicación (`public.usuario`), no Aldea.
 
 ## Criterios de aceptación
 

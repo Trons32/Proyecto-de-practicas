@@ -105,12 +105,12 @@ async function principal() {
   // no se dejan borrar (trigger), así que se apagan solo para limpiar.
   const novedades = ["novedad_decision", "novedad_afectacion_docente", "novedad_afectacion", "novedad_cambio", "novedad"];
   await bd.$transaction([
-    bd.$executeRawUnsafe(`DELETE FROM aa.asignacion`),
-    ...novedades.map((t) => bd.$executeRawUnsafe(`ALTER TABLE aa.${t} DISABLE TRIGGER USER`)),
-    ...novedades.map((t) => bd.$executeRawUnsafe(`DELETE FROM aa.${t}`)),
-    ...novedades.map((t) => bd.$executeRawUnsafe(`ALTER TABLE aa.${t} ENABLE TRIGGER USER`)),
-    bd.$executeRawUnsafe(`DELETE FROM aa.docente`),
-    bd.$executeRawUnsafe(`DELETE FROM aa.convocatoria`),
+    bd.$executeRawUnsafe(`DELETE FROM public.asignacion`),
+    ...novedades.map((t) => bd.$executeRawUnsafe(`ALTER TABLE public.${t} DISABLE TRIGGER USER`)),
+    ...novedades.map((t) => bd.$executeRawUnsafe(`DELETE FROM public.${t}`)),
+    ...novedades.map((t) => bd.$executeRawUnsafe(`ALTER TABLE public.${t} ENABLE TRIGGER USER`)),
+    bd.$executeRawUnsafe(`DELETE FROM public.docente`),
+    bd.$executeRawUnsafe(`DELETE FROM public.convocatoria`),
   ]);
 
   // ── Configuración ───────────────────────────────────────────

@@ -65,7 +65,7 @@ export const proveedorAuth = (): "api" | "prueba" =>
 
 /**
  * Valida usuario y clave. **Este es el punto donde entra Aldea** (SPEC-010):
- * la API institucional valida la clave y `aa.usuario` decide si entra y con
+ * la API institucional valida la clave y `public.usuario` decide si entra y con
  * qué rol. Ver `lib/servidor/aldea.ts`.
  */
 export async function verificarCredenciales(email: string, clave: string): Promise<Usuario | null> {

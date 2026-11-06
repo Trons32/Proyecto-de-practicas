@@ -71,7 +71,7 @@ inventa (sería decir que nada cambió). Se lista aparte como "sin línea base".
   evento `aprobada`, tiene que coincidir con los cursos de ese momento y
   no cambia después.
 - Cambia la forma de `Asignacion`: `asignaciones` pasa a v4 (el `migrate`
-  no inventa líneas base), el esquema SQL gana `aa.linea_base_curso` y
+  no inventa líneas base), el esquema SQL gana `public.linea_base_curso` y
   `db/respaldo-a-sql.ts` la migra.
 - Los históricos se importan tal como están en el Excel, incluidas
   cifras dudosas (ver "Pendiente"). No se corrigen a mano.

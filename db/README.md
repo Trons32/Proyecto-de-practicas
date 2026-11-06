@@ -87,4 +87,4 @@ Están excluidos de git; no los suba ni los comparta.
 ## Pendiente con el cliente
 
 - ¿Una sola asignación por programa y periodo? Si es así, una migración con
-  `UNIQUE (programa_id, periodo)` en `aa.asignacion`.
+  `UNIQUE (programa_id, periodo)` en `public.asignacion`.

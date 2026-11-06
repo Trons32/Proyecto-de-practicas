@@ -3,7 +3,7 @@
  * servidor: la URL y el token de la API no pueden llegar al bundle.
  *
  * La API responde una sola pregunta —¿esta clave es de este usuario?—. Quién
- * entra y con qué rol lo decide `aa.usuario`: estar en el directorio de la
+ * entra y con qué rol lo decide `public.usuario`: estar en el directorio de la
  * universidad no da acceso a la asignación académica.
  *
  * Mientras sistemas no entregue el contrato definitivo, la petición se arma

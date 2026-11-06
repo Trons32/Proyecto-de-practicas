@@ -108,21 +108,21 @@ function generar(r: Respaldo): string {
   sec("Parametrización vigente");
   for (const [ded, g] of Object.entries(c.reglas)) {
     l.push(
-      `UPDATE aa.regla_dedicacion SET max_horas = ${g.maxHoras}, preparacion = ${g.preparacion}, atencion = ${g.atencion}, comunidades = ${g.comunidades} WHERE dedicacion = ${txt(ded)};`
+      `UPDATE public.regla_dedicacion SET max_horas = ${g.maxHoras}, preparacion = ${g.preparacion}, atencion = ${g.atencion}, comunidades = ${g.comunidades} WHERE dedicacion = ${txt(ded)};`
     );
   }
   l.push(
-    `UPDATE aa.limite SET max_cursos = ${c.limites.maxCursos}, max_descargas = ${c.limites.maxDescargas}, max_administrativas = ${c.limites.maxAdministrativas} WHERE id = 1;`
+    `UPDATE public.limite SET max_cursos = ${c.limites.maxCursos}, max_descargas = ${c.limites.maxDescargas}, max_administrativas = ${c.limites.maxAdministrativas} WHERE id = 1;`
   );
   // Roles: los del respaldo quedan vigentes; los de la semilla que la
   // aplicación eliminó, no vigentes (las cerradas pueden seguir usándolos).
   for (const rol of c.roles) {
     l.push(
-      `INSERT INTO aa.rol (id, nombre, tipo, reclasificado) VALUES (${rol.id}, ${txt(rol.nombre)}, '${rol.tipo}', ${bit(Boolean(rol.reclasificado))}) ` +
+      `INSERT INTO public.rol (id, nombre, tipo, reclasificado) VALUES (${rol.id}, ${txt(rol.nombre)}, '${rol.tipo}', ${bit(Boolean(rol.reclasificado))}) ` +
         `ON CONFLICT (id) DO UPDATE SET nombre = EXCLUDED.nombre, tipo = EXCLUDED.tipo, vigente = TRUE;`
     );
   }
-  l.push(`UPDATE aa.rol SET vigente = FALSE WHERE id NOT IN (${c.roles.map((x) => x.id).join(", ") || "NULL"});`);
+  l.push(`UPDATE public.rol SET vigente = FALSE WHERE id NOT IN (${c.roles.map((x) => x.id).join(", ") || "NULL"});`);
 
   sec("Periodos y convocatorias");
   const periodos = new Set<string>([
@@ -132,11 +132,11 @@ function generar(r: Respaldo): string {
     ...novedades.flatMap((n) => n.afectadas.map((a) => a.periodo)),
   ]);
   for (const p of [...periodos].sort()) {
-    l.push(`INSERT INTO aa.periodo (codigo) VALUES ('${p}') ON CONFLICT DO NOTHING;`);
+    l.push(`INSERT INTO public.periodo (codigo) VALUES ('${p}') ON CONFLICT DO NOTHING;`);
   }
   for (const v of Object.values(c.convocatorias)) {
     l.push(
-      `INSERT INTO aa.convocatoria (periodo, apertura, limite, cerrada_manualmente) VALUES ('${v.periodo}', ${txt(v.apertura)}, ${txt(v.limite)}, ${bit(v.cerradaManualmente)});`
+      `INSERT INTO public.convocatoria (periodo, apertura, limite, cerrada_manualmente) VALUES ('${v.periodo}', ${txt(v.apertura)}, ${txt(v.limite)}, ${bit(v.cerradaManualmente)});`
     );
   }
 
@@ -150,7 +150,7 @@ function generar(r: Respaldo): string {
     }
   }
   for (const [doc, nombres] of personas) {
-    l.push(`INSERT INTO aa.docente (documento, nombres) VALUES ('${doc}', ${txt(nombres) === "NULL" ? "'—'" : txt(nombres)});`);
+    l.push(`INSERT INTO public.docente (documento, nombres) VALUES ('${doc}', ${txt(nombres) === "NULL" ? "'—'" : txt(nombres)});`);
   }
 
   for (const a of asignaciones) {
@@ -158,14 +158,14 @@ function generar(r: Respaldo): string {
     // plazo_correccion solo vale en en_correccion; fuera de ahí la aplicación lo ignora.
     const plazo = a.estado === "en_correccion" ? txt(a.plazoCorreccion) : "NULL";
     l.push(
-      `INSERT INTO aa.asignacion (id, periodo, programa_id, estado, version, plazo_correccion, creada, actualizada) VALUES (${uid(a.id)}, '${a.periodo}', (SELECT id FROM aa.programa WHERE nombre = ${txt(a.programa)}), '${a.estado}', ${a.version}, ${plazo}, ${txt(a.creada)}, ${txt(a.actualizada)});`
+      `INSERT INTO public.asignacion (id, periodo, programa_id, estado, version, plazo_correccion, creada, actualizada) VALUES (${uid(a.id)}, '${a.periodo}', (SELECT id FROM public.programa WHERE nombre = ${txt(a.programa)}), '${a.estado}', ${a.version}, ${plazo}, ${txt(a.creada)}, ${txt(a.actualizada)});`
     );
 
     a.docentes.forEach((d, i) => {
       const doc = d.documento.trim();
-      const persona = /^\d{6,15}$/.test(doc) ? `(SELECT id FROM aa.docente WHERE documento = '${doc}')` : "NULL";
+      const persona = /^\d{6,15}$/.test(doc) ? `(SELECT id FROM public.docente WHERE documento = '${doc}')` : "NULL";
       l.push(
-        `INSERT INTO aa.docente_asignado (id, asignacion_id, docente_id, orden, documento, nombres, nivel_formacion, perfil_profesional, categoria_minciencias, activo_sector_externo, sector_ejerce, tipo_contrato, dedicacion, categoria, sede, evaluacion_docente, observaciones, preparacion, atencion, comunidades) VALUES (` +
+        `INSERT INTO public.docente_asignado (id, asignacion_id, docente_id, orden, documento, nombres, nivel_formacion, perfil_profesional, categoria_minciencias, activo_sector_externo, sector_ejerce, tipo_contrato, dedicacion, categoria, sede, evaluacion_docente, observaciones, preparacion, atencion, comunidades) VALUES (` +
           [
             uid(d.id), uid(a.id), persona, i + 1, txt(doc), txt(d.nombres), txt(d.nivelFormacion),
             txt(d.perfilProfesional), txt(d.categoriaMinciencias), txt(d.activoSectorExterno),
@@ -176,7 +176,7 @@ function generar(r: Respaldo): string {
       );
       d.cursos.forEach((k, j) => {
         l.push(
-          `INSERT INTO aa.curso_asignado (id, docente_asignado_id, orden, codigo_programa, nombre_programa, codigo_pensum, codigo_curso, nombre_curso, semestre, grupo, jornada, intensidad_horaria, creditos, estudiantes, modalidad) VALUES (` +
+          `INSERT INTO public.curso_asignado (id, docente_asignado_id, orden, codigo_programa, nombre_programa, codigo_pensum, codigo_curso, nombre_curso, semestre, grupo, jornada, intensidad_horaria, creditos, estudiantes, modalidad) VALUES (` +
             [
               uid(k.id), uid(d.id), j + 1, txt(k.codigoPrograma), txt(k.nombrePrograma), txt(k.codigoPensum),
               txt(k.codigoCurso), txt(k.nombreCurso), num(k.semestre), txt(k.grupo), txt(k.jornada),
@@ -191,7 +191,7 @@ function generar(r: Respaldo): string {
       ];
       actividades.forEach((x, j) => {
         l.push(
-          `INSERT INTO aa.actividad (id, docente_asignado_id, clase, orden, rol_id, horas) VALUES (${uid(x.id)}, ${uid(d.id)}, '${x.clase}', ${j + 1}, ${num(x.rolId)}, ${num(x.horas)});`
+          `INSERT INTO public.actividad (id, docente_asignado_id, clase, orden, rol_id, horas) VALUES (${uid(x.id)}, ${uid(d.id)}, '${x.clase}', ${j + 1}, ${num(x.rolId)}, ${num(x.horas)});`
         );
       });
     });
@@ -199,11 +199,11 @@ function generar(r: Respaldo): string {
     // Línea base de la proyección (SPEC-009), si la asignación ya se aprobó.
     if (a.lineaBase) {
       l.push(
-        `UPDATE aa.asignacion SET linea_base_fecha = ${txt(a.lineaBase.fecha)}, linea_base_version = ${a.lineaBase.version} WHERE id = ${uid(a.id)};`
+        `UPDATE public.asignacion SET linea_base_fecha = ${txt(a.lineaBase.fecha)}, linea_base_version = ${a.lineaBase.version} WHERE id = ${uid(a.id)};`
       );
       a.lineaBase.cursos.forEach((k, j) => {
         l.push(
-          `INSERT INTO aa.linea_base_curso (asignacion_id, orden, curso_id, docente_id, docente, codigo_curso, nombre_curso, semestre, grupo, intensidad_horaria, estudiantes) VALUES (` +
+          `INSERT INTO public.linea_base_curso (asignacion_id, orden, curso_id, docente_id, docente, codigo_curso, nombre_curso, semestre, grupo, intensidad_horaria, estudiantes) VALUES (` +
             [
               uid(a.id), j + 1, uid(k.id), uid(k.docenteId), txt(k.docente), txt(k.codigoCurso), txt(k.nombreCurso),
               num(k.semestre), txt(k.grupo), num(k.intensidadHoraria), num(k.estudiantes),
@@ -218,26 +218,26 @@ function generar(r: Respaldo): string {
   sec("Novedades");
   for (const n of novedades) {
     l.push(
-      `INSERT INTO aa.novedad (id, numero, fecha, autor, rol_autor, periodo, con_convocatoria_cerrada, motivo) VALUES (${uid(n.id)}, ${n.numero}, ${txt(n.fecha)}, ${txt(n.autor)}, '${n.rolAutor}', ${n.periodo ? `'${n.periodo}'` : "NULL"}, ${bit(n.conConvocatoriaCerrada)}, ${txt(n.motivo)});`
+      `INSERT INTO public.novedad (id, numero, fecha, autor, rol_autor, periodo, con_convocatoria_cerrada, motivo) VALUES (${uid(n.id)}, ${n.numero}, ${txt(n.fecha)}, ${txt(n.autor)}, '${n.rolAutor}', ${n.periodo ? `'${n.periodo}'` : "NULL"}, ${bit(n.conConvocatoriaCerrada)}, ${txt(n.motivo)});`
     );
     n.cambios.forEach((k, j) => {
       l.push(
-        `INSERT INTO aa.novedad_cambio (novedad_id, orden, ambito, parametro, antes, despues) VALUES (${uid(n.id)}, ${j + 1}, '${k.ambito}', ${txt(k.parametro)}, ${txt(k.antes)}, ${txt(k.despues)});`
+        `INSERT INTO public.novedad_cambio (novedad_id, orden, ambito, parametro, antes, despues) VALUES (${uid(n.id)}, ${j + 1}, '${k.ambito}', ${txt(k.parametro)}, ${txt(k.antes)}, ${txt(k.despues)});`
       );
     });
     for (const f of n.afectadas) {
       l.push(
-        `INSERT INTO aa.novedad_afectacion (novedad_id, asignacion_id, programa, facultad, periodo, errores_antes, errores_ahora) VALUES (${uid(n.id)}, ${uid(f.asignacionId)}, ${txt(f.programa)}, ${txt(f.facultad)}, '${f.periodo}', ${f.erroresAntes}, ${f.erroresAhora});`
+        `INSERT INTO public.novedad_afectacion (novedad_id, asignacion_id, programa, facultad, periodo, errores_antes, errores_ahora) VALUES (${uid(n.id)}, ${uid(f.asignacionId)}, ${txt(f.programa)}, ${txt(f.facultad)}, '${f.periodo}', ${f.erroresAntes}, ${f.erroresAhora});`
       );
       f.docentes.forEach((d, j) => {
         l.push(
-          `INSERT INTO aa.novedad_afectacion_docente (novedad_id, asignacion_id, orden, nombres, motivos) VALUES (${uid(n.id)}, ${uid(f.asignacionId)}, ${j + 1}, ${txt(d.nombres)}, ${txt(JSON.stringify(d.motivos))});`
+          `INSERT INTO public.novedad_afectacion_docente (novedad_id, asignacion_id, orden, nombres, motivos) VALUES (${uid(n.id)}, ${uid(f.asignacionId)}, ${j + 1}, ${txt(d.nombres)}, ${txt(JSON.stringify(d.motivos))});`
         );
       });
     }
     for (const k of n.decisiones) {
       l.push(
-        `INSERT INTO aa.novedad_decision (novedad_id, asignacion_id, accion, fecha, autor, nota, plazo) VALUES (${uid(n.id)}, ${uid(k.asignacionId)}, '${k.accion}', ${txt(k.fecha)}, ${txt(k.autor)}, ${txt(k.nota)}, ${txt(k.plazo)});`
+        `INSERT INTO public.novedad_decision (novedad_id, asignacion_id, accion, fecha, autor, nota, plazo) VALUES (${uid(n.id)}, ${uid(k.asignacionId)}, '${k.accion}', ${txt(k.fecha)}, ${txt(k.autor)}, ${txt(k.nota)}, ${txt(k.plazo)});`
       );
     }
   }
@@ -246,7 +246,7 @@ function generar(r: Respaldo): string {
   for (const a of asignaciones) {
     for (const e of a.bitacora) {
       l.push(
-        `INSERT INTO aa.evento_asignacion (id, asignacion_id, tipo, fecha, autor, rol_autor, nota, plazo, version, novedad_id) VALUES (${uid(e.id)}, ${uid(a.id)}, '${e.tipo}', ${txt(e.fecha)}, ${txt(e.autor)}, '${e.rolAutor}', ${txt(e.nota)}, ${txt(e.plazo)}, ${num(e.version)}, ${e.novedadId ? uid(e.novedadId) : "NULL"});`
+        `INSERT INTO public.evento_asignacion (id, asignacion_id, tipo, fecha, autor, rol_autor, nota, plazo, version, novedad_id) VALUES (${uid(e.id)}, ${uid(a.id)}, '${e.tipo}', ${txt(e.fecha)}, ${txt(e.autor)}, '${e.rolAutor}', ${txt(e.nota)}, ${txt(e.plazo)}, ${num(e.version)}, ${e.novedadId ? uid(e.novedadId) : "NULL"});`
       );
     }
   }

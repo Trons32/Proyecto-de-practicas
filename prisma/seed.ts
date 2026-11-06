@@ -75,12 +75,24 @@ async function principal() {
   });
   console.log(`✓ Catálogos: ${PROGRAMAS.length} programas, ${ternas.length} combinaciones, ${ROLES.length} roles.`);
 
+  // Usuarios demo: los mismos correos de los usuarios de prueba de
+  // lib/auth/sesion.ts, para que con AUTH_PROVEEDOR=prueba se pueda entrar
+  // con ambos roles en una base recién creada. Sus claves viven allí, no aquí.
+  const demo: UsuarioInicial[] = [
+    { email: "admin@cecar.edu.co", nombres: "Administrador del Sistema", rol: "ADMIN" },
+    {
+      email: "coordinador@cecar.edu.co",
+      nombres: "Coordinador Académico",
+      rol: "COORDINADOR",
+      programa: "INGENIERÍA DE SISTEMAS",
+    },
+  ];
   const archivo = join(__dirname, "usuarios.json");
-  if (!existsSync(archivo)) {
-    console.log("· Sin prisma/usuarios.json: no se cargaron usuarios (copie usuarios.ejemplo.json).");
-    return;
-  }
-  const usuarios = JSON.parse(readFileSync(archivo, "utf8")) as UsuarioInicial[];
+  if (!existsSync(archivo)) console.log("· Sin prisma/usuarios.json: solo se cargan los usuarios demo.");
+  const usuarios = [
+    ...demo,
+    ...(existsSync(archivo) ? (JSON.parse(readFileSync(archivo, "utf8")) as UsuarioInicial[]) : []),
+  ];
   for (const u of usuarios) {
     const programa = u.programa
       ? await c.programa.findUnique({ where: { nombre: u.programa }, select: { id: true } })

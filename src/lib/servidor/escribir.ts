@@ -64,7 +64,7 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
     // que el otro confirmó. Dos clientes que crean el mismo id nuevo no
     // tienen fila que bloquear: ahí los separa la clave primaria.
     const ids = [...asignaciones.map((a) => aUuid(a.id)), ...borrados.map(aUuid)];
-    await tx.$queryRaw`SELECT id FROM aa.asignacion WHERE id = ANY(${ids}::uuid[]) ORDER BY id FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM public.asignacion WHERE id = ANY(${ids}::uuid[]) ORDER BY id FOR UPDATE`;
     const guardadas = new Map(
       (await leerAsignaciones({ ids, cliente: tx })).asignaciones.map((a) => [a.id, a])
     );

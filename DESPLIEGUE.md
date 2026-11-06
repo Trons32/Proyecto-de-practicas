@@ -37,7 +37,6 @@ DATABASE_URL="postgresql://asignacion_admin:<clave del dueño>@<vps>:5432/asigna
 # 1.4 En la VPS: el usuario de la aplicación. La migración ya creó el rol
 #     rol_asignacion_app, que no puede editar la bitácora ni las novedades.
 sudo -u postgres psql -c "CREATE ROLE app_asignacion LOGIN PASSWORD '<clave de la app>' IN ROLE rol_asignacion_app;"
-sudo -u postgres psql -d asignacion_academica -c "ALTER ROLE app_asignacion SET search_path = aa;"
 ```
 
 La aplicación se conecta con `app_asignacion`, **nunca** con el dueño ni con
@@ -99,7 +98,7 @@ ajusta con `AUTH_API_CAMPO_USUARIO`, `AUTH_API_CAMPO_CLAVE` y
 cambia solo `consultarApi()` en `src/lib/servidor/aldea.ts`.
 
 La API **solo valida la clave**. Para entrar, el correo debe estar además
-activo en `aa.usuario` (paso 1.3); de ahí sale el rol.
+activo en `public.usuario` (paso 1.3); de ahí sale el rol.
 
 ## 3. Compilar y arrancar
 
@@ -132,7 +131,7 @@ Debe responder `200` con:
 | `"sesion": "falta-secreto"`  | `SESION_SECRETO` vacío o de menos de 32 caracteres               |
 
 Luego, en el navegador: entrar con un administrador y un coordinador de
-`aa.usuario`, crear una asignación, cerrar sesión y volver a entrar desde
+`public.usuario`, crear una asignación, cerrar sesión y volver a entrar desde
 otro equipo. Si la asignación sigue ahí, está guardando en la base.
 
 ## Ensayo sin la API
