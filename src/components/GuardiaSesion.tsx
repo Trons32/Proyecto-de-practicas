@@ -23,6 +23,7 @@ export default function GuardiaSesion({ children }: { children: React.ReactNode 
   const ruta = usePathname();
   const router = useRouter();
   const esLogin = ruta === "/login";
+  const cambioClave = ruta === "/cambiar-clave";
 
   useEffect(() => {
     restaurar();
@@ -39,15 +40,20 @@ export default function GuardiaSesion({ children }: { children: React.ReactNode 
       return;
     }
     if (esLogin) {
-      router.replace(inicioDeRol(sesion.usuario.rol));
+      router.replace(sesion.usuario.debeCambiarClave ? "/cambiar-clave" : inicioDeRol(sesion.usuario.rol));
+      return;
+    }
+    if (sesion.usuario.debeCambiarClave && !cambioClave) {
+      router.replace("/cambiar-clave");
       return;
     }
     if (zonaAdmin && rol !== "ADMIN") router.replace("/");
-  }, [hidratado, sesion, esLogin, zonaAdmin, rol, router]);
+  }, [hidratado, sesion, esLogin, cambioClave, zonaAdmin, rol, router]);
 
   if (!hidratado) return null;
   if (!sesion && !esLogin) return null;
   if (sesion && esLogin) return null;
+  if (sesion?.usuario.debeCambiarClave && !cambioClave) return null;
   if (sesion && zonaAdmin && rol !== "ADMIN") return null;
 
   return <>{children}</>;

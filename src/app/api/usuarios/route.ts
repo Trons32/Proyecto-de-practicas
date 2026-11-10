@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   const clave = claveTemporal();
   let creado: { id: string };
   try {
-    creado = await bd().usuario.create({ data: { email, nombres, rol, programa_id: rol === "COORDINADOR" ? programaId : null, clave_hash: await hashDeClave(clave), clave_actualizada: new Date() }, select: { id: true } });
+    creado = await bd().usuario.create({ data: { email, nombres, rol, programa_id: rol === "COORDINADOR" ? programaId : null, clave_hash: await hashDeClave(clave), clave_actualizada: new Date(), debe_cambiar_clave: rol === "COORDINADOR" }, select: { id: true } });
   } catch (e) {
     if ((e as { code?: string }).code === "P2002") return error(409, "Ya existe un usuario con ese correo.");
     throw e;

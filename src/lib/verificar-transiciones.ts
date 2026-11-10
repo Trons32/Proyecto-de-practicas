@@ -127,6 +127,7 @@ const aprobadaPorAdmin: Asignacion = {
 comprobar("con sesión: el administrador aprueba", revisarGuardado(enviada, aprobadaPorAdmin, sesionAdmin) === null);
 comprobar("con sesión: el coordinador no puede aprobar aunque el evento diga ADMIN", revisarGuardado(enviada, aprobadaPorAdmin, sesionCoord) !== null);
 comprobar("con sesión: un evento a nombre de otro se rechaza", revisarGuardado(enviada, aprobadaPorAdmin, { nombres: "OTRO", rol: "ADMIN" }) !== null);
+comprobar("con sesión: el administrador no puede editar docentes", revisarGuardado(base, { ...base, docentes: [nuevoDocente()] }, sesionAdmin) !== null);
 comprobar("con sesión: el coordinador envía", revisarGuardado(base, (() => {
   const x = structuredClone(base);
   x.estado = "enviada"; x.version = 1;

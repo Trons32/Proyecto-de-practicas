@@ -46,7 +46,8 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
   const config = useConfiguracion();
   const plazo = usePlazo(asignacion);
 
-  const editable = asignacion ? esEditable(asignacion.estado) : false;
+  const esCoordinador = usuario?.rol === "COORDINADOR";
+  const editable = Boolean(asignacion && esCoordinador && esEditable(asignacion.estado));
   const corrigiendo = asignacion?.estado === "en_correccion";
 
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
@@ -83,11 +84,13 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
   if (!asignacion || !resumen) return <NoEncontrada />;
 
   const nuevoDocente = () => {
+    if (!editable) return;
     const docenteId = agregarDocente(asignacion.id);
     if (docenteId) router.push(`/asignacion/${asignacion.id}/docente/${docenteId}`);
   };
 
   const confirmarEliminar = () => {
+    if (!editable) return;
     if (!porEliminar) return;
     const eliminado = eliminarDocente(asignacion.id, porEliminar);
     setPorEliminar(null);
@@ -137,6 +140,7 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
   };
 
   const intentarEnviar = () => {
+    if (!editable) return;
     if (resumen.totalDocentes === 0) {
       sileo.error({
         title: "La asignación está vacía",
@@ -228,7 +232,7 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
-      {!editable && (
+      {!editable && esCoordinador && (
         <div className="mb-6 flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
           <FiLock className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" aria-hidden />
           <div className="min-w-0">

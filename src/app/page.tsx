@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
+import { useSesionStore } from "@/lib/stores/sesion-store";
 import { resumirAsignacion, separarEnProgreso, desde, legible } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import Encabezado from "@/components/Encabezado";
@@ -20,6 +21,7 @@ import {
 export default function Inicio() {
   const asignaciones = useAsignacionStore((s) => s.asignaciones);
   const hidratado = useAsignacionStore((s) => s.hidratado);
+  const esCoordinador = useSesionStore((s) => s.sesion?.usuario.rol === "COORDINADOR");
 
   const config = useConfiguracion();
 
@@ -98,9 +100,11 @@ export default function Inicio() {
                 Última edición {desde(enProgreso.a.actualizada)}
               </p>
             </div>
-            <Link href={`/asignacion/${enProgreso.a.id}`}>
-              <Boton>Continuar asignación</Boton>
-            </Link>
+            {esCoordinador && (
+              <Link href={`/asignacion/${enProgreso.a.id}`}>
+                <Boton>Continuar asignación</Boton>
+              </Link>
+            )}
           </header>
 
           <div className="grid gap-6 p-5 lg:grid-cols-[1fr_auto]">

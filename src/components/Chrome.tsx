@@ -10,7 +10,7 @@ import BarraLateral from "./BarraLateral";
 export default function Chrome({ children }: { children: React.ReactNode }) {
   const ruta = usePathname();
 
-  if (ruta === "/login") return <>{children}</>;
+  if (ruta === "/login" || ruta === "/cambiar-clave") return <>{children}</>;
 
   return (
     <>

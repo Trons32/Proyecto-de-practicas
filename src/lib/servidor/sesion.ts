@@ -12,7 +12,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { buscarUsuarioDePrueba, DURACION_SESION_MS, type Usuario } from "../auth/sesion";
 import { verificarConApi } from "./aldea";
-import { coincideClave, normalizarCorreo } from "./credenciales";
+import { coincideClave, hashDeClave, normalizarCorreo } from "./credenciales";
 import { bd } from "./bd";
 import type { Rol } from "../auth/sesion";
 
@@ -68,9 +68,20 @@ export const proveedorAuth = (): "api" | "prueba" | "local" => {
 
 async function verificarLocal(email: string, clave: string): Promise<Usuario | null> {
   if (!email.trim() || !clave) return null;
-  const fila = await bd().usuario.findFirst({ where: { email: normalizarCorreo(email), activo: true }, select: { id: true, email: true, nombres: true, rol: true, clave_hash: true } });
-  if (!fila || !(await coincideClave(clave, fila.clave_hash))) return null;
-  return { id: fila.id, email: fila.email, nombres: fila.nombres, rol: fila.rol as Rol };
+  const fila = await bd().usuario.findFirst({ where: { email: normalizarCorreo(email), activo: true }, select: { id: true, email: true, nombres: true, rol: true, clave_hash: true, debe_cambiar_clave: true } });
+  if (!fila) return null;
+  if (fila.clave_hash && await coincideClave(clave, fila.clave_hash)) {
+    return { id: fila.id, email: fila.email, nombres: fila.nombres, rol: fila.rol as Rol, debeCambiarClave: fila.debe_cambiar_clave };
+  }
+  // Las instalaciones anteriores tienen el administrador de arranque sin
+  // hash. La primera entrada le permite fijar una credencial local; luego la
+  // clave publicada deja de funcionar porque ya existe un hash propio.
+  const inicial = buscarUsuarioDePrueba(email, clave);
+  if (!fila.clave_hash && inicial?.email === fila.email && inicial.rol === "ADMIN") {
+    await bd().usuario.update({ where: { id: fila.id }, data: { clave_hash: await hashDeClave(clave), clave_actualizada: new Date() } });
+    return { id: fila.id, email: fila.email, nombres: fila.nombres, rol: fila.rol as Rol };
+  }
+  return null;
 }
 
 /**

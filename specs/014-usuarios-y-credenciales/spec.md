@@ -36,6 +36,12 @@ aplicación y notificar la credencial inicial al correo institucional.
 - **CA-014.6** `CREDENCIALES_ENTREGA=prueba` muestra la clave temporal una vez
   al administrador para pruebas sin SMTP. En producción exige además
   `PERMITIR_CREDENCIALES_PRUEBA=1`, una decisión explícita y temporal.
+- **CA-014.7** En una instalación anterior sin hashes, el administrador demo
+  puede entrar una vez con su clave publicada para establecer su clave propia;
+  al hacerlo se reemplaza por un hash y la clave publicada deja de servir.
+- **CA-014.8** Un coordinador creado con credencial temporal debe reemplazarla
+  en su primer ingreso. Mientras no lo haga, no puede navegar ni modificar la
+  información de asignaciones.
 
 ## Configuración
 

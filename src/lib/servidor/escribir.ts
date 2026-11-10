@@ -105,9 +105,16 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
       for (const [i, d] of a.docentes.entries()) {
         const doc = d.documento.trim();
         let personaId: string | null = null;
-        // Un documento repetido en un borrador no bloquea el guardado: el
-        // segundo queda sin enlazar hasta que el coordinador lo corrija.
-        if (/^\d{6,15}$/.test(doc) && !enlazados.has(doc)) {
+        // El borrador se persiste en cada tecla. Con seis dígitos ya cumple el
+        // formato mínimo, pero todavía puede ser un prefijo del documento que
+        // el coordinador sigue escribiendo; crear aquí la persona histórica
+        // dejaba filas como 100326, 1003262, 10032621… Solo una entrega fija
+        // el vínculo con el docente real. En corrección aplica lo mismo: se
+        // enlaza al reenviar, no durante la edición.
+        const fijaDocentes = a.estado !== "borrador" && a.estado !== "en_correccion";
+        // Un documento repetido no bloquea el guardado: el segundo queda sin
+        // enlazar hasta que el coordinador lo corrija.
+        if (fijaDocentes && /^\d{6,15}$/.test(doc) && !enlazados.has(doc)) {
           enlazados.add(doc);
           const nombres = d.nombres.trim() || "—";
           const persona = await tx.docente.upsert({

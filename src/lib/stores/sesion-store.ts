@@ -16,6 +16,8 @@ interface SesionStore {
   hidratado: boolean;
 
   iniciar: (usuario: Usuario, recordarme: boolean) => void;
+  /** Refresca los datos firmados tras cambiar la contraseña obligatoria. */
+  actualizarUsuario: (usuario: Usuario) => void;
   cerrar: () => void;
   /** Lee la sesión guardada y descarta la que haya expirado. */
   restaurar: () => void;
@@ -71,6 +73,18 @@ export const useSesionStore = create<SesionStore>()((set) => ({
     guardar(sesion, recordarme);
     set({ sesion, hidratado: true });
   },
+
+  actualizarUsuario: (usuario) => set((estado) => {
+    if (!estado.sesion) return estado;
+    const sesion = { ...estado.sesion, usuario };
+    try {
+      const destino = localStorage.getItem(CLAVE_SESION) !== null ? localStorage : sessionStorage;
+      destino.setItem(CLAVE_SESION, JSON.stringify(sesion));
+    } catch {
+      // Sin storage la sesión sigue viva en memoria hasta que venza.
+    }
+    return { sesion };
+  }),
 
   cerrar: () => {
     borrar();

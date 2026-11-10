@@ -35,7 +35,7 @@ export default function Login() {
     iniciar(r.usuario, recordarme);
     // Lo que se intentó cargar antes del login fue rechazado (401).
     await recargarDatos();
-    router.replace(inicioDeRol(r.usuario.rol));
+    router.replace(r.usuario.debeCambiarClave ? "/cambiar-clave" : inicioDeRol(r.usuario.rol));
   };
 
   return (

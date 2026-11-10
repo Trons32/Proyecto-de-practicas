@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   CONTRATOS,
@@ -27,11 +27,11 @@ import {
   nuevoCurso,
   aplicarReglaDedicacion,
 } from "@/lib/tipos";
-import { Hallazgo, Totales } from "@/lib/calculo";
+import { calcularTotales, validarDocente, Hallazgo, Totales } from "@/lib/calculo";
 import { REGLAS, type CamposDocente } from "@/lib/esquema-docente";
 import { Campo, Entrada, Seleccion, Seccion, Boton, Insignia } from "./ui";
 import { sileo } from "@/lib/toast";
-import { FiPlus, FiTrash2, FiAlertCircle, FiAlertTriangle, FiRefreshCw } from "./iconos";
+import { FiPlus, FiTrash2, FiRefreshCw, FiSave } from "./iconos";
 
 const ETIQUETA_TIPO = {
   DOCENCIA: "Docencia",
@@ -55,13 +55,20 @@ export default function FormularioDocente({
   hallazgos,
   programaPorDefecto,
   onCambio,
+  onGuardar,
+  pasoActivo,
+  soloLectura = false,
 }: {
   docente: Docente;
   totales: Totales;
   hallazgos: Hallazgo[];
   programaPorDefecto: string;
   onCambio: (d: Docente) => void;
+  onGuardar: (d: Docente) => void;
+  pasoActivo: number;
+  soloLectura?: boolean;
 }) {
+  const [filasPendientes, setFilasPendientes] = useState<Set<string>>(new Set());
   const set = <K extends keyof Docente>(campo: K, valor: Docente[K]) =>
     onCambio({ ...docente, [campo]: valor });
 
@@ -73,6 +80,7 @@ export default function FormularioDocente({
    */
   const {
     register,
+    trigger,
     formState: { errors: erroresRHF },
   } = useForm<CamposDocente>({
     mode: "onBlur",
@@ -138,6 +146,26 @@ export default function FormularioDocente({
   }, [roles, docente.descargas, docente.administrativas]);
 
   const regla = reglas[docente.dedicacion];
+  const apoyoInicializado = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!regla || soloLectura) return;
+    const clave = `${docente.id}:${docente.dedicacion}:${regla.preparacion}:${regla.atencion}:${regla.comunidades}`;
+    if (apoyoInicializado.current === clave) return;
+    apoyoInicializado.current = clave;
+
+    // Los docentes creados antes de escoger la dedicación conservan ceros.
+    // Al abrirlos por primera vez se ofrecen los valores institucionales, sin
+    // volver a imponerlos después de que el coordinador los ajuste.
+    if (docente.preparacion === 0 && docente.atencion === 0 && docente.comunidades === 0) {
+      onCambio({
+        ...docente,
+        preparacion: regla.preparacion,
+        atencion: regla.atencion,
+        comunidades: regla.comunidades,
+      });
+    }
+  }, [docente, onCambio, regla, soloLectura]);
 
   /**
    * Las horas de apoyo se precargan desde la dedicación, pero el
@@ -178,34 +206,96 @@ export default function FormularioDocente({
   }, [excede, totales.totalSemanal, totales.maxHoras, docente.dedicacion]);
 
   /* ---------- listas anidadas ---------- */
-  const setDescarga = (id: string, cambios: Partial<Descarga>) =>
-    set(
-      "descargas",
-      docente.descargas.map((x) => (x.id === id ? { ...x, ...cambios } : x))
-    );
-  const setAdmin = (id: string, cambios: Partial<Administrativa>) =>
-    set(
-      "administrativas",
-      docente.administrativas.map((x) => (x.id === id ? { ...x, ...cambios } : x))
-    );
-  const setCurso = (id: string, cambios: Partial<Curso>) =>
-    set(
-      "cursos",
-      docente.cursos.map((x) => (x.id === id ? { ...x, ...cambios } : x))
-    );
+  const quitarFilaPendiente = (id: string) =>
+    setFilasPendientes((actuales) => {
+      if (!actuales.has(id)) return actuales;
+      const siguientes = new Set(actuales);
+      siguientes.delete(id);
+      return siguientes;
+    });
+  const setDescarga = (id: string, cambios: Partial<Descarga>) => {
+    const descarga = docente.descargas.find((x) => x.id === id);
+    const siguiente = descarga && { ...descarga, ...cambios };
+    set("descargas", docente.descargas.map((x) => (x.id === id ? { ...x, ...cambios } : x)));
+    if (siguiente && siguiente.rolId !== null && siguiente.horas > 0) quitarFilaPendiente(id);
+  };
+  const setAdmin = (id: string, cambios: Partial<Administrativa>) => {
+    const actividad = docente.administrativas.find((x) => x.id === id);
+    const siguiente = actividad && { ...actividad, ...cambios };
+    set("administrativas", docente.administrativas.map((x) => (x.id === id ? { ...x, ...cambios } : x)));
+    if (siguiente && siguiente.rolId !== null && siguiente.horas > 0) quitarFilaPendiente(id);
+  };
+  const setCurso = (id: string, cambios: Partial<Curso>) => {
+    const curso = docente.cursos.find((x) => x.id === id);
+    const siguiente = curso && { ...curso, ...cambios };
+    set("cursos", docente.cursos.map((x) => (x.id === id ? { ...x, ...cambios } : x)));
+    if (siguiente && siguiente.nombreCurso.trim() && siguiente.intensidadHoraria && siguiente.creditos && siguiente.jornada && siguiente.modalidad) {
+      quitarFilaPendiente(id);
+    }
+  };
 
   const num = (v: string): number | null => (v === "" ? null : Number(v));
+  const camposDeDocente: (keyof CamposDocente)[] = [
+    "documento", "nombres", "nivelFormacion", "tipoContrato", "dedicacion", "categoria", "sede", "evaluacionDocente",
+  ];
+  const tieneErrorDeSeccion = (
+    seccion: "docente" | "cursos" | "descargas" | "actividades" | "apoyo",
+    hallazgosActuales: Hallazgo[]
+  ) => {
+    const campos = {
+      docente: (campo: string) => camposDeDocente.includes(campo as keyof CamposDocente),
+      cursos: (campo: string) => campo === "cursos" || campo.startsWith("curso-"),
+      descargas: (campo: string) => campo.startsWith("descarga-"),
+      actividades: (campo: string) => campo.startsWith("admin-"),
+      apoyo: (campo: string) => campo === "totalSemanal",
+    }[seccion];
+    if (hallazgosActuales.some((h) => h.severidad === "error" && campos(h.campo))) return true;
+    return false;
+  };
+  const guardarSeccion = async (seccion: "docente" | "cursos" | "descargas" | "actividades" | "apoyo") => {
+    // trigger activa los mensajes de RHF incluso si el usuario fue directo al
+    // botón Guardar; los hallazgos cubren cursos y actividades anidadas.
+    const rhfValido = seccion === "docente" ? await trigger(camposDeDocente) : true;
+    // No usamos el análisis recibido por props: puede corresponder al render
+    // anterior. Aquí se recalcula con el borrador exacto que va a persistirse.
+    const hallazgosActuales = validarDocente(docente, calcularTotales(docente, { roles, reglas }));
+    const filasIncompletas = new Set(
+      seccion === "cursos"
+        ? docente.cursos
+            .filter((curso) => !curso.nombreCurso.trim() || !curso.intensidadHoraria || !curso.creditos || !curso.jornada || !curso.modalidad)
+            .map((curso) => curso.id)
+        : seccion === "descargas"
+          ? docente.descargas
+              .filter((descarga) => descarga.rolId === null || descarga.horas <= 0)
+              .map((descarga) => descarga.id)
+          : seccion === "actividades"
+            ? docente.administrativas
+                .filter((actividad) => actividad.rolId === null || actividad.horas <= 0)
+                .map((actividad) => actividad.id)
+            : []
+    );
+    setFilasPendientes(filasIncompletas);
+    if (!rhfValido || filasIncompletas.size > 0 || tieneErrorDeSeccion(seccion, hallazgosActuales)) {
+      sileo.error({ title: "Revise los campos marcados", description: "Hay datos pendientes o inválidos en esta sección." });
+      return;
+    }
+    onGuardar(docente);
+    setFilasPendientes(new Set());
+    sileo.success({ title: "Cambios guardados" });
+  };
+  const accionGuardar = (etiqueta: string, seccion: "docente" | "cursos" | "descargas" | "actividades" | "apoyo") => (
+    <Boton onClick={() => void guardarSeccion(seccion)}><FiSave aria-hidden /> {etiqueta}</Boton>
+  );
 
   // El resumen de dedicación lo coloca la página, en su propia columna
   // sticky: así sobrevive al ancho que le quita la barra lateral.
   return (
     <div className="min-w-0">
+      <fieldset disabled={soloLectura} className="m-0 min-w-0 border-0 p-0 disabled:opacity-75">
       <div className="min-w-0 space-y-6">
         {/* ---------------- Información del docente ---------------- */}
-        <Seccion
-          titulo="Información del docente"
-          descripcion="Datos personales, profesionales y de vinculación"
-        >
+        <div className={pasoActivo === 0 ? "" : "hidden"}>
+        <Seccion titulo="Información del docente" descripcion="Datos personales, profesionales y de vinculación">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Campo
               etiqueta="Número de documento"
@@ -380,14 +470,18 @@ export default function FormularioDocente({
               />
             </Campo>
           </div>
+          {!soloLectura && <div className="mt-6 -mx-5 -mb-5 flex justify-end rounded-b-xl bg-cecar-50/60 px-5 py-3">
+            {accionGuardar("Guardar docente", "docente")}
+          </div>}
         </Seccion>
+        </div>
 
         {/* ---------------- Cursos ---------------- */}
+        <div className={pasoActivo === 1 ? "" : "hidden"}>
         <Seccion
           titulo="Cursos asignados"
           descripcion={`${docente.cursos.length} de ${limites.maxCursos} · las horas de clase salen de la intensidad horaria`}
-          accion={
-            <Boton
+          accion={<Boton
               variante="secundario"
               onClick={() => {
                 if (docente.cursos.length >= limites.maxCursos) {
@@ -408,11 +502,17 @@ export default function FormularioDocente({
               }}
             >
               <FiPlus aria-hidden /> Agregar curso
-            </Boton>
-          }
+            </Boton>}
         >
           <div className="space-y-4">
-            {docente.cursos.map((c, i) => (
+            {docente.cursos.map((c, i) => {
+              const cursoPendiente = filasPendientes.has(c.id) || errores.has(`curso-${i}`);
+              const nombreInvalido = cursoPendiente && !c.nombreCurso.trim();
+              const jornadaInvalida = cursoPendiente && !c.jornada;
+              const intensidadInvalida = cursoPendiente && !c.intensidadHoraria;
+              const creditosInvalidos = cursoPendiente && !c.creditos;
+              const modalidadInvalida = cursoPendiente && !c.modalidad;
+              return (
               <div
                 key={c.id}
                 className="rounded-xl border border-[var(--color-borde)] bg-[var(--color-superficie)]/50 p-4 sm:p-5"
@@ -470,7 +570,7 @@ export default function FormularioDocente({
                   <Campo etiqueta="Nombre del curso" requerido className="lg:col-span-3">
                     <Entrada
                       value={c.nombreCurso}
-                      error={errores.has(`curso-${i}`)}
+                      error={nombreInvalido}
                       onChange={(e) => setCurso(c.id, { nombreCurso: e.target.value.toUpperCase() })}
                       placeholder="REDES DE COMPUTADORES I"
                     />
@@ -504,6 +604,7 @@ export default function FormularioDocente({
                     <Seleccion
                       opciones={JORNADAS}
                       value={c.jornada}
+                      error={jornadaInvalida}
                       onChange={(e) => setCurso(c.id, { jornada: e.target.value })}
                     />
                   </Campo>
@@ -514,6 +615,7 @@ export default function FormularioDocente({
                       min={1}
                       max={8}
                       value={c.intensidadHoraria ?? ""}
+                      error={intensidadInvalida}
                       onChange={(e) => setCurso(c.id, { intensidadHoraria: num(e.target.value) })}
                       placeholder="4"
                     />
@@ -525,6 +627,7 @@ export default function FormularioDocente({
                       min={1}
                       max={8}
                       value={c.creditos ?? ""}
+                      error={creditosInvalidos}
                       onChange={(e) => setCurso(c.id, { creditos: num(e.target.value) })}
                       placeholder="3"
                     />
@@ -544,24 +647,30 @@ export default function FormularioDocente({
                     <Seleccion
                       opciones={MODALIDADES}
                       value={c.modalidad}
+                      error={modalidadInvalida}
                       onChange={(e) => setCurso(c.id, { modalidad: e.target.value })}
                     />
                   </Campo>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
+          {!soloLectura && <div className="mt-6 -mx-5 -mb-5 flex justify-end rounded-b-xl bg-cecar-50/60 px-5 py-3">
+            {accionGuardar("Guardar cursos", "cursos")}
+          </div>}
         </Seccion>
+        </div>
 
         {/* ---------------- Descargas y administrativas ---------------- */}
         {/* Una sola columna: los nombres de rol llegan a 96 caracteres y en
             dos columnas el <select> los recortaba. */}
         <div className="grid gap-6">
+          <div className={pasoActivo === 2 ? "" : "hidden"}>
           <Seccion
             titulo="Descargas directas"
             descripcion={`${docente.descargas.length} de ${limites.maxDescargas}`}
-            accion={
-              <Boton
+            accion={<Boton
                 variante="secundario"
                 onClick={() => {
                   if (docente.descargas.length >= limites.maxDescargas) {
@@ -575,8 +684,7 @@ export default function FormularioDocente({
                 }}
               >
                 <FiPlus aria-hidden /> Agregar
-              </Boton>
-            }
+              </Boton>}
           >
             <ListaActividades
               roles={roles}
@@ -584,6 +692,7 @@ export default function FormularioDocente({
               items={docente.descargas}
               prefijo="R"
               vacio="Sin descargas directas."
+              filasPendientes={filasPendientes}
               onCambio={setDescarga}
               onQuitar={(x) =>
                 set(
@@ -592,13 +701,17 @@ export default function FormularioDocente({
                 )
               }
             />
+            {!soloLectura && <div className="mt-6 -mx-5 -mb-5 flex justify-end rounded-b-xl bg-cecar-50/60 px-5 py-3">
+              {accionGuardar("Guardar descargas", "descargas")}
+            </div>}
           </Seccion>
+          </div>
 
+          <div className={pasoActivo === 3 ? "" : "hidden"}>
           <Seccion
             titulo="Actividades administrativas"
             descripcion={`${docente.administrativas.length} de ${limites.maxAdministrativas}`}
-            accion={
-              <Boton
+            accion={<Boton
                 variante="secundario"
                 onClick={() => {
                   if (docente.administrativas.length >= limites.maxAdministrativas) {
@@ -612,8 +725,7 @@ export default function FormularioDocente({
                 }}
               >
                 <FiPlus aria-hidden /> Agregar
-              </Boton>
-            }
+              </Boton>}
           >
             <ListaActividades
               roles={roles}
@@ -621,6 +733,7 @@ export default function FormularioDocente({
               items={docente.administrativas}
               prefijo="R"
               vacio="Sin actividades administrativas."
+              filasPendientes={filasPendientes}
               onCambio={setAdmin}
               onQuitar={(x) =>
                 set(
@@ -629,10 +742,15 @@ export default function FormularioDocente({
                 )
               }
             />
+            {!soloLectura && <div className="mt-6 -mx-5 -mb-5 flex justify-end rounded-b-xl bg-cecar-50/60 px-5 py-3">
+              {accionGuardar("Guardar actividades", "actividades")}
+            </div>}
           </Seccion>
+          </div>
         </div>
 
         {/* ---------------- Apoyo académico ---------------- */}
+        <div className={pasoActivo === 4 ? "" : "hidden"}>
         <Seccion
           titulo="Horas de apoyo académico"
           descripcion={
@@ -640,13 +758,11 @@ export default function FormularioDocente({
               ? "Se precargan según la dedicación; ajústelas si la asignación lo requiere"
               : "Al elegir una dedicación se aplican los valores institucionales"
           }
-          accion={
-            ajustado && (
+          accion={ajustado && (
               <Boton variante="secundario" onClick={restaurarApoyo}>
                 <FiRefreshCw aria-hidden /> Restaurar
               </Boton>
-            )
-          }
+            )}
         >
           <div className="grid gap-4 sm:grid-cols-3">
             {APOYO.map(({ clave, etiqueta }) => (
@@ -678,32 +794,14 @@ export default function FormularioDocente({
               placeholder="Anotaciones sobre la asignación de este docente"
             />
           </Campo>
+          {!soloLectura && <div className="mt-6 -mx-5 -mb-5 flex justify-end rounded-b-xl bg-cecar-50/60 px-5 py-3">
+            {accionGuardar("Guardar apoyo académico", "apoyo")}
+          </div>}
         </Seccion>
+        </div>
 
-        {/* ---------------- Validaciones ---------------- */}
-        {hallazgos.length > 0 && (
-          <Seccion titulo="Revisión" descripcion="Puntos por verificar antes de guardar">
-            <ul className="space-y-2">
-              {hallazgos.map((h, i) => (
-                <li key={i} className="flex items-start gap-2.5 text-sm">
-                  {h.severidad === "error" ? (
-                    <FiAlertCircle className="mt-0.5 shrink-0 text-rose-500" aria-hidden />
-                  ) : (
-                    <FiAlertTriangle className="mt-0.5 shrink-0 text-amber-500" aria-hidden />
-                  )}
-                  <span
-                    className={
-                      h.severidad === "error" ? "text-rose-700" : "text-[var(--color-texto-suave)]"
-                    }
-                  >
-                    {h.mensaje}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Seccion>
-        )}
       </div>
+      </fieldset>
     </div>
   );
 }
@@ -716,6 +814,7 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
   vacio,
   roles,
   opcionesRol,
+  filasPendientes,
   onCambio,
   onQuitar,
 }: {
@@ -725,6 +824,7 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
   /** Roles vigentes, que el administrador puede haber parametrizado. */
   roles: RolDescarga[];
   opcionesRol: { valor: string; texto: string }[];
+  filasPendientes: Set<string>;
   onCambio: (id: string, cambios: Partial<T>) => void;
   onQuitar: (item: T) => void;
 }) {
@@ -740,6 +840,7 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
     <div className="space-y-4">
       {items.map((x, i) => {
         const rol = roles.find((r) => r.id === x.rolId);
+        const filaPendiente = filasPendientes.has(x.id);
         const tono =
           rol?.tipo === "INVESTIGACION" ? "azul" : rol?.tipo === "EXTENSION" ? "ambar" : "verde";
         return (
@@ -771,6 +872,7 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
                   className="w-full"
                   opciones={opcionesRol}
                   value={x.rolId === null ? "" : String(x.rolId)}
+                  error={filaPendiente}
                   title={rol?.nombre}
                   onChange={(e) =>
                     onCambio(x.id, {
@@ -786,6 +888,7 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
                   min={0}
                   max={20}
                   value={x.horas || ""}
+                  error={filaPendiente}
                   onChange={(e) => onCambio(x.id, { horas: Number(e.target.value) || 0 } as Partial<T>)}
                   placeholder="0"
                 />

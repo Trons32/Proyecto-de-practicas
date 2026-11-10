@@ -119,7 +119,13 @@ export function revisarGuardado(anterior: Asignacion | undefined, nueva: Asignac
   if (estado === "en_correccion" && !mismoInstante(nueva.plazoCorreccion, plazo)) {
     return "El plazo de corrección solo se fija al devolver o reabrir.";
   }
-  if (!editableAlEmpezar && contenido(nueva) !== contenido(anterior)) {
+  const cambioContenido = contenido(nueva) !== contenido(anterior);
+  // La administración decide sobre el ciclo (aprobar, devolver o reabrir),
+  // pero no sustituye al coordinador al diligenciar la carga docente.
+  if (actor?.rol === "ADMIN" && cambioContenido) {
+    return "El administrador solo puede revisar la información del docente.";
+  }
+  if (!editableAlEmpezar && cambioContenido) {
     return "La asignación ya fue entregada: sus docentes no se pueden modificar.";
   }
   return revisarLineaBase(anterior, nueva);

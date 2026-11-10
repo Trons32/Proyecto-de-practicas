@@ -45,6 +45,9 @@ export async function PUT(req: Request, ctx: { params: Promise<{ clave: string }
 
   const usuario = await usuarioActual();
   if (!usuario) return error(401, "Inicie sesión.");
+  if (usuario.debeCambiarClave) {
+    return error(403, "Actualice la contraseña temporal antes de modificar información.");
+  }
   if (nombre !== "asignaciones" && usuario.rol !== "ADMIN") {
     return error(403, "Solo el administrador cambia parámetros y novedades.");
   }

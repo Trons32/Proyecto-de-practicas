@@ -129,6 +129,7 @@ async function principal() {
   await guardarAsignaciones([borrador], []);
   let leidas = (await leerAsignaciones()).asignaciones;
   comprobar("borrador de 45 docentes: ida y vuelta (CA-006.3)", !diferencia(leidas, [borrador]), diferencia(leidas, [borrador]));
+  comprobar("un borrador no crea docentes históricos por cada pulsación", (await bd.docente.count()) === 0);
 
   const a: Asignacion = {
     ...borrador,
@@ -144,6 +145,7 @@ async function principal() {
   await guardarAsignaciones([a], []);
   leidas = (await leerAsignaciones()).asignaciones;
   comprobar("enviar y aprobar: ida y vuelta, con la línea base (CA-009.3)", !diferencia(leidas, [a]), diferencia(leidas, [a]));
+  comprobar("una entrega fija los docentes históricos", (await bd.docente.count()) === docentes.length);
 
   await guardarAsignaciones(leidas, []);
   const otraVez = (await leerAsignaciones()).asignaciones;

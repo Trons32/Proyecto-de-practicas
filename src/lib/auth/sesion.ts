@@ -13,6 +13,8 @@ export interface Usuario {
   nombres: string;
   email: string;
   rol: Rol;
+  /** Solo se marca en credenciales locales temporales de coordinadores. */
+  debeCambiarClave?: boolean;
 }
 
 export interface Sesion {
