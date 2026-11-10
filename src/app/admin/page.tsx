@@ -63,6 +63,7 @@ const MODULOS = [
     icono: FiUsers,
     titulo: "Usuarios",
     texto: "Alta de coordinadores y administradores, y los programas que gestiona cada uno.",
+    href: "/admin/usuarios",
   },
 ];
 

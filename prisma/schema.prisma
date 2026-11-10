@@ -325,12 +325,14 @@ model tipo_contrato {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model usuario {
-  id          String    @id(map: "pk_usuario") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email       String    @unique(map: "uq_usuario_email") @db.VarChar(254)
-  nombres     String    @db.VarChar(150)
-  rol         String    @db.VarChar(12)
-  programa_id Int?
-  activo      Boolean   @default(true)
-  programa    programa? @relation(fields: [programa_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_usuario_programa")
+  id                String    @id(map: "pk_usuario") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email             String    @unique(map: "uq_usuario_email") @db.VarChar(254)
+  nombres           String    @db.VarChar(150)
+  rol               String    @db.VarChar(12)
+  programa_id       Int?
+  activo            Boolean   @default(true)
+  clave_hash        String?   @db.VarChar(255)
+  clave_actualizada DateTime? @db.Timestamptz(6)
+  programa          programa? @relation(fields: [programa_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_usuario_programa")
 
 }

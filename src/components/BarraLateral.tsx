@@ -58,7 +58,7 @@ const MENU: Record<Rol, Enlace[]> = {
     { icono: FiEye, texto: "Observaciones", href: "/admin/observaciones" },
     { icono: FiDatabase, texto: "Respaldo", href: "/admin/datos" },
     { icono: FiBarChart2, texto: "Reportes", href: "/admin/reportes" },
-    { icono: FiUsers, texto: "Usuarios" },
+    { icono: FiUsers, texto: "Usuarios", href: "/admin/usuarios" },
   ],
 };
 
