@@ -9,7 +9,7 @@
 import { calcularTotales, CONFIG_OFICIAL, type Configuracion } from "./calculo";
 import type { TipoRol } from "./catalogos";
 import type { CuadroHistorico, Modalidad, ProgramaHistorico } from "./historicos";
-import { cursosBase, periodoAnterior, type Asignacion, type CursoBase, type Docente, type EstadoAsignacion } from "./tipos";
+import { cursosBase, esImportada, periodoAnterior, type Asignacion, type CursoBase, type Docente, type EstadoAsignacion } from "./tipos";
 
 /* ------------------------------------------------------------------
    Qué asignaciones entran
@@ -322,7 +322,38 @@ export function comparativo(
    Comparativo estadístico completo (SPEC-009)
    ------------------------------------------------------------------ */
 
-export type FuenteDato = "sistema" | "historico" | "vacio";
+/** «importado»: asignaciones cargadas del Excel de un periodo anterior (SPEC-017). */
+export type FuenteDato = "sistema" | "importado" | "historico" | "vacio";
+
+/* ---- Periodos importados: cuándo reemplazan al consolidado (SPEC-017) ---- */
+
+export interface Cobertura {
+  /** Programas del consolidado con docentes en ese periodo, enlazados al catálogo. */
+  esperados: string[];
+  importados: string[];
+  faltan: string[];
+  /**
+   * Ya están todos. Hasta entonces el total del periodo sigue siendo el del
+   * consolidado: sumar diez programas importados con cuatro que faltan
+   * daría una cifra que no es ni la del Excel ni la real.
+   */
+  completo: boolean;
+}
+
+export function coberturaImportada(asignaciones: Asignacion[], periodo: string, historicos: ProgramaHistorico[]): Cobertura {
+  const esperados = historicos
+    .filter((h) => h.programa && (h.periodos[periodo]?.total ?? 0) > 0)
+    .map((h) => h.programa!);
+  const importados = [
+    ...new Set(asignaciones.filter((a) => a.periodo === periodo && esImportada(a)).map((a) => a.programa)),
+  ];
+  const faltan = esperados.filter((p) => !importados.includes(p));
+  // Sin programas en el consolidado para ese periodo, lo importado es la única fuente.
+  return { esperados, importados, faltan, completo: importados.length > 0 && faltan.length === 0 };
+}
+
+/** «sistema» si alguna se hizo en el sistema; «importado» si todas vinieron de un Excel. */
+const fuenteDe = (propias: Asignacion[]): FuenteDato => (propias.every(esImportada) ? "importado" : "sistema");
 
 export interface FilaComparable {
   etiqueta: string;
@@ -359,7 +390,8 @@ export function comparativoCompleto(
   asignaciones: Asignacion[],
   f: FiltroReporte,
   historicos: CuadroHistorico[],
-  config: Configuracion = CONFIG_OFICIAL
+  config: Configuracion = CONFIG_OFICIAL,
+  programasHistoricos: ProgramaHistorico[] = []
 ): CuadroComparable[] {
   const filtrado = Boolean(f.facultad || f.programa);
   const periodos = [
@@ -370,8 +402,12 @@ export function comparativoCompleto(
 
   return periodos.map((periodo) => {
     const propias = asignacionesDelReporte(asignaciones, { ...f, periodo });
-    if (propias.length > 0) return comoComparable(periodo, cuadroResumen(propias, config));
     const h = historicos.find((x) => x.periodo === periodo);
+    const fuente = propias.length ? fuenteDe(propias) : null;
+    // Importado a medias: manda el consolidado (ver `coberturaImportada`).
+    const aMedias =
+      fuente === "importado" && h && !filtrado && !coberturaImportada(asignaciones, periodo, programasHistoricos).completo;
+    if (fuente && !aMedias) return { ...comoComparable(periodo, cuadroResumen(propias, config)), fuente };
     if (h && !filtrado) return { periodo, etiqueta: h.etiqueta, fuente: "historico", bloques: h.bloques };
     return { ...comoComparable(periodo, cuadroResumen([], config)), fuente: "vacio" };
   });
@@ -481,7 +517,7 @@ export function comparativoPorPrograma(
           const propias = asignacionesDelReporte(asignaciones, { periodo, alcance, programa: p.nombre });
           return [
             periodo,
-            propias.length > 0 ? { ...conteoDocentes(propias), fuente: "sistema" } : historicoOVacio(h?.periodos[periodo]),
+            propias.length > 0 ? { ...conteoDocentes(propias), fuente: fuenteDe(propias) } : historicoOVacio(h?.periodos[periodo]),
           ];
         })
       ),
@@ -512,13 +548,17 @@ const sumar = (a: number | null, b: number | null) => (a === null && b === null 
 export function comparativoPorModalidad(
   filas: FilaPrograma[],
   periodos: string[],
-  historicoModalidad: Record<Modalidad, Record<string, Partial<ConteoDocentes>>>
+  historicoModalidad: Record<Modalidad, Record<string, Partial<ConteoDocentes>>>,
+  /** Periodos importados completos (SPEC-017): ahí la suma reemplaza al Excel. */
+  completos: Set<string> = new Set()
 ): Record<Modalidad, Record<string, ConteoDocentes>> {
   const salida = {} as Record<Modalidad, Record<string, ConteoDocentes>>;
   for (const m of MODALIDADES) {
     salida[m] = {};
     for (const periodo of periodos) {
-      const conSistema = filas.some((f) => f.modalidad === m && f.periodos[periodo]?.fuente === "sistema");
+      const fuentes = filas.filter((f) => f.modalidad === m).map((f) => f.periodos[periodo]?.fuente);
+      const conSistema =
+        fuentes.includes("sistema") || (fuentes.includes("importado") && completos.has(periodo));
       const h = historicoModalidad[m]?.[periodo];
       if (!conSistema && h) {
         const v = { tc: h.tc ?? null, mt: h.mt ?? null, cat: h.cat ?? null, tutor: h.tutor ?? null };
@@ -539,6 +579,87 @@ export function comparativoPorModalidad(
     }
   }
   return salida;
+}
+
+/* ---- Tablas del comparativo que se derivan de las anteriores (SPEC-016) ---- */
+
+/** La suma de varios conteos; null solo si todos lo son ("sin dato" no es cero). */
+export function sumarConteos(conteos: (ConteoDocentes | undefined)[]): ConteoDocentes {
+  const c = { ...VACIO };
+  for (const v of conteos) {
+    if (!v) continue;
+    c.tc = sumar(c.tc, v.tc);
+    c.mt = sumar(c.mt, v.mt);
+    c.cat = sumar(c.cat, v.cat);
+    c.tutor = sumar(c.tutor, v.tutor);
+    c.total = sumar(c.total, v.total);
+  }
+  return c;
+}
+
+/** Fila con datos de un programa en un periodo; "vacio" se trata como ausente. */
+const conDato = (f: FilaPrograma, periodo: string): ConteoDocentes | undefined => {
+  const v = f.periodos[periodo];
+  return v && v.fuente !== "vacio" ? v : undefined;
+};
+
+/**
+ * La fila TOTAL GENERAL DOCENTES de cada tabla por modalidad del Excel: la
+ * suma de los programas que se muestran. Puede no coincidir con la tabla por
+ * modalidad, que en los periodos históricos copia la del Excel (que no
+ * siempre cuadra consigo mismo); por eso se calcula aparte.
+ */
+export function totalProgramas(filas: FilaPrograma[], periodos: string[]): Record<string, ConteoDocentes> {
+  return Object.fromEntries(periodos.map((p) => [p, sumarConteos(filas.map((f) => conDato(f, p)))]));
+}
+
+/**
+ * El total de docentes de un periodo por dedicación, del primer renglón del
+ * cuadro ("Total docentes"). Agrupa como el comparativo por programa: hora
+ * labor con cátedra, y los dos tutores juntos.
+ */
+export function docentesPorDedicacion(c: CuadroComparable): ConteoDocentes {
+  const fila = c.fuente === "vacio" ? undefined : c.bloques[0]?.filas[0];
+  if (!fila) return { ...VACIO };
+  const v = (i: number) => fila.valores[i] ?? null;
+  return { tc: v(0), mt: v(1), cat: sumar(v(2), v(3)), tutor: sumar(v(4), v(5)), total: fila.total };
+}
+
+export interface FilaDocentesEstudiantes {
+  periodo: string;
+  docentes: number | null;
+  estudiantes: number | null;
+  /** Estudiantes por docente, a un decimal. */
+  relacion: number | null;
+}
+
+/**
+ * La tabla COMPARATIVO HISTÓRICO DOCENTES VS. ESTUDIANTES. Los docentes salen
+ * del cuadro (sistema o Excel); los estudiantes solo del consolidado, porque
+ * la suma de cupos de los cursos cuenta a una persona varias veces (spec 009).
+ */
+export function docentesVsEstudiantes(
+  cuadros: CuadroComparable[],
+  estudiantes: { periodo: string; estudiantes: number | null }[]
+): FilaDocentesEstudiantes[] {
+  return cuadros
+    .filter((c) => c.fuente !== "vacio")
+    .map((c) => {
+      const docentes = totalDe(c, 0, 0);
+      const est = estudiantes.find((e) => e.periodo === c.periodo)?.estudiantes ?? null;
+      return {
+        periodo: c.periodo,
+        docentes,
+        estudiantes: est,
+        relacion: docentes && est !== null ? Math.round((est / docentes) * 10) / 10 : null,
+      };
+    });
+}
+
+/** Los dos últimos periodos en que alguna fila tiene datos: entre ellos se mide la variación. */
+export function periodosDeVariacion(filas: FilaPrograma[], periodos: string[]): [string, string] | null {
+  const [ultimo, previo] = periodos.filter((p) => filas.some((f) => conDato(f, p))).reverse();
+  return ultimo && previo ? [previo, ultimo] : null;
 }
 
 /* ------------------------------------------------------------------
@@ -612,7 +733,8 @@ export function proyeccion(
 
   for (const a of delPeriodo) {
     if (!a.lineaBase) {
-      if (a.estado === "aprobada" || a.version > 0) sinLineaBase.push(a);
+      // Una importada nunca tuvo proyección (SPEC-017): no le falta nada.
+      if ((a.estado === "aprobada" || a.version > 0) && !esImportada(a)) sinLineaBase.push(a);
       continue;
     }
     const vigentes = cursosBase(a.docentes);

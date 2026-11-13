@@ -18,6 +18,10 @@ import {
   comparativoPorModalidad,
   comparativoPorPrograma,
   cuadroResumen,
+  docentesPorDedicacion,
+  docentesVsEstudiantes,
+  periodosDeVariacion,
+  totalProgramas,
   COLUMNAS_CUADRO,
   proyeccion,
   totalDe,
@@ -279,6 +283,26 @@ let proyeccionAjustada: ReturnType<typeof proyeccion> | undefined;
   const modalidad = comparativoPorModalidad(porPrograma, ["2025-1"], HISTORICO_MODALIDAD);
   comprobar("por modalidad: presencial TC 2025-1 del Excel", modalidad.PRESENCIAL["2025-1"].tc, 171);
 
+  // SPEC-016: las tablas que se derivan de las anteriores.
+  const ded = comp.map(docentesPorDedicacion);
+  comprobar(
+    "por periodo: las dedicaciones suman el total",
+    ded.every((d) => d.total === null || [d.tc, d.mt, d.cat, d.tutor].reduce<number>((s, v) => s + (v ?? 0), 0) === d.total),
+    true
+  );
+  comprobar("por periodo: un vacío no es cero", docentesPorDedicacion({ ...comp[0], fuente: "vacio" }).total, null);
+  const ve = docentesVsEstudiantes(comp, [{ periodo: "2022-1", estudiantes: 9668 }]);
+  comprobar("docentes vs. estudiantes 2022-1", [ve[0].docentes, ve[0].estudiantes, ve[0].relacion], [526, 9668, 18.4]);
+  comprobar("sin estudiantes la relación es «—»", ve[1].relacion, null);
+  const presencial = porPrograma.filter((f) => f.modalidad === "PRESENCIAL");
+  const totalPres = totalProgramas(presencial, ["2025-2"])["2025-2"].total;
+  comprobar(
+    "total general = suma de los programas",
+    totalPres,
+    presencial.reduce((s, f) => s + (f.periodos["2025-2"].fuente === "vacio" ? 0 : (f.periodos["2025-2"].total ?? 0)), 0)
+  );
+  comprobar("variación entre los dos últimos con datos", periodosDeVariacion(porPrograma, ["2025-1", "2025-2"]), ["2025-1", "2025-2"]);
+
   // CA-009.3 y .4: la línea base y lo que cambió después.
   const docentes = docentesFixture.slice(0, 2).map((d) => ({
     ...d,
@@ -329,7 +353,7 @@ async function verificarLibrosSpec009() {
       estudiantes: [],
     })
   );
-  comprobar("hojas del comparativo", comp.worksheets.map((w) => w.name), ["CUADRO POR PERIODO", "POR PROGRAMA", "POR MODALIDAD"]);
+  comprobar("hojas del comparativo", comp.worksheets.map((w) => w.name), ["CUADRO POR PERIODO", "POR PROGRAMA", "POR MODALIDAD", "POR PERIODO", "DOCENTES VS ESTUDIANTES"]);
   const [cuadro, porPrograma, porModalidad] = comp.worksheets;
   // Fila 7 = título del primer bloque; fila 8 = "Total docentes".
   comprobar("comparativo .xlsx: total docentes", periodos.map((_, k) => cuadro.getCell(8, 2 + k).value), [526, 530, 517, 518, 460, 426, 403, 381]);

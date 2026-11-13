@@ -1,59 +1,102 @@
 /**
- * La sesión del lado del servidor (SPEC-008): una cookie httpOnly con el
- * usuario y su vencimiento, firmada con HMAC. El navegador la lleva pero no
- * puede leerla ni alterarla; la API decide con ella quién pide qué, en vez
- * de creerle al cuerpo de la petición.
+ * La sesión del lado del servidor (SPEC-018). NextAuth (`src/auth.ts`) firma
+ * y cifra la cookie; aquí vive lo que decide quién entra y qué lleva el
+ * token, para que se pueda probar sin levantar NextAuth.
  *
- * Sin estado en el servidor a propósito: no hay tabla de sesiones que
- * limpiar, y cerrar sesión es borrar la cookie. El costo es que una cookie
- * robada vale hasta que vence (una hora, como el formato institucional).
+ * Sin tabla de sesiones, como en SPEC-008: el token es un JWT en cookie. Lo
+ * que antes era un vencimiento fijo de una hora ahora es por inactividad:
+ * cada consulta a `/api/auth/session` vuelve a firmarlo con `MAX_SESION_S`
+ * por delante.
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
-import { cookies } from "next/headers";
-import { buscarUsuarioDePrueba, DURACION_SESION_MS, type Usuario } from "../auth/sesion";
+import { buscarUsuarioDePrueba, type Usuario } from "../auth/sesion";
+export { COOKIE_RECORDARME } from "../auth/sesion";
 import { verificarConApi } from "./aldea";
 import { coincideClave, hashDeClave, normalizarCorreo } from "./credenciales";
 import { bd } from "./bd";
 import type { Rol } from "../auth/sesion";
 
-export const COOKIE_SESION = "cecar-sesion";
+/** Tiempo sin actividad que aguanta la sesión: una jornada. */
+export const MAX_SESION_S = 8 * 60 * 60;
+/**
+ * Cada cuánto el token vuelve a mirar `public.usuario`. Sin esto, un usuario
+ * desactivado o con otro rol seguiría con la sesión vieja hasta que venza.
+ */
+export const REVALIDAR_MS = 15 * 60 * 1000;
 
-function secreto(): string {
-  const s = process.env.SESION_SECRETO;
-  // Un secreto corto se adivina por fuerza bruta y con él se fabrica
-  // cualquier sesión, incluida la de administrador.
-  if (!s || s.length < 32) throw new Error("Defina SESION_SECRETO (32 caracteres o más) en el servidor.");
-  return s;
+/** Lo que guarda el JWT, además de los campos propios de NextAuth. */
+export interface DatosToken {
+  usuario?: Usuario;
+  /** Cuándo se comparó por última vez con `public.usuario` (ms). */
+  verificado?: number;
 }
 
-const firma = (datos: string) => createHmac("sha256", secreto()).update(datos).digest("base64url");
-
-export function firmarSesion(usuario: Usuario, ahora = Date.now()): string {
-  const datos = Buffer.from(JSON.stringify({ usuario, exp: ahora + DURACION_SESION_MS })).toString("base64url");
-  return `${datos}.${firma(datos)}`;
+/**
+ * Pone al día el usuario del token. Devuelve `null` si ya no debe tener
+ * sesión: NextAuth borra entonces la cookie.
+ *
+ * `buscar` es `usuarioVigente` en el servidor; la prueba pasa uno falso.
+ */
+export async function refrescarToken<T extends DatosToken>(
+  token: T,
+  { ahora = Date.now(), buscar = usuarioVigente, proveedor = proveedorAuth() }: {
+    ahora?: number;
+    buscar?: (email: string) => Promise<Usuario | null>;
+    proveedor?: ReturnType<typeof proveedorAuth>;
+  } = {}
+): Promise<T | null> {
+  const usuario = token.usuario;
+  if (!usuario) return null;
+  // Los usuarios de prueba no están en la base: no hay con qué comparar.
+  if (proveedor === "prueba") return token;
+  // Quien debe cambiar la clave temporal se revisa en cada consulta: así,
+  // al cambiarla, la sesión lo nota sin esperar 15 minutos.
+  const toca = usuario.debeCambiarClave || ahora - (token.verificado ?? 0) >= REVALIDAR_MS;
+  if (!toca) return token;
+  const vigente = await buscar(usuario.email);
+  if (!vigente) return null;
+  return { ...token, usuario: vigente, verificado: ahora };
 }
 
-/** El usuario del token, o null si está alterado o vencido. */
-export function verificarSesion(token: string | undefined, ahora = Date.now()): Usuario | null {
-  if (!token) return null;
-  const [datos, recibida] = token.split(".");
-  if (!datos || !recibida) return null;
-  const esperada = Buffer.from(firma(datos));
-  const dada = Buffer.from(recibida);
-  // Comparación en tiempo constante: una normal filtraría cuántos
-  // caracteres de la firma acertó un atacante.
-  if (esperada.length !== dada.length || !timingSafeEqual(esperada, dada)) return null;
-  try {
-    const { usuario, exp } = JSON.parse(Buffer.from(datos, "base64url").toString()) as { usuario: Usuario; exp: number };
-    return ahora < exp ? usuario : null;
-  } catch {
-    return null;
-  }
+/** El usuario activo en `public.usuario`, con su rol de hoy. */
+export async function usuarioVigente(email: string): Promise<Usuario | null> {
+  const fila = await bd().usuario.findFirst({
+    where: { email: normalizarCorreo(email), activo: true },
+    select: { id: true, email: true, nombres: true, rol: true, debe_cambiar_clave: true },
+  });
+  if (!fila) return null;
+  return {
+    id: String(fila.id),
+    email: String(fila.email),
+    nombres: String(fila.nombres),
+    rol: fila.rol as Rol,
+    // Con Aldea la clave no es nuestra: un coordinador del piloto que nunca
+    // cambió la temporal quedaría atrapado cambiando una clave que ya no usa.
+    debeCambiarClave: proveedorAuth() === "api" ? false : fila.debe_cambiar_clave,
+  };
 }
 
 /** El usuario de la petición en curso, según su cookie. */
 export async function usuarioActual(): Promise<Usuario | null> {
-  return verificarSesion((await cookies()).get(COOKIE_SESION)?.value);
+  // Importación diferida: `src/auth.ts` importa este archivo, y las pruebas
+  // lo usan sin cargar NextAuth.
+  const { auth } = await import("@/auth");
+  const sesion = await auth();
+  return sesion?.usuario ?? null;
+}
+
+/**
+ * NextAuth fija siempre una fecha de vencimiento en la cookie de sesión.
+ * Sin "Recordarme" se la quita, para que muera al cerrar el navegador. Las
+ * cookies vacías (cerrar sesión, sesión vencida) se dejan como vienen:
+ * quitarles la fecha pasada impediría borrarlas.
+ */
+export function ajustarRecordarme(cookies: string[], recordarme: boolean): string[] {
+  if (recordarme) return cookies;
+  return cookies.map((c) =>
+    /^(__Secure-)?authjs\.session-token(\.\d+)?=[^;]/.test(c)
+      ? c.replace(/;\s*(Expires|Max-Age)=[^;]*/gi, "")
+      : c
+  );
 }
 
 /**

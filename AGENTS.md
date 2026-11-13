@@ -17,7 +17,7 @@ administrativas, y el sistema le dice si la carga cuadra con la dedicación.
 
 Next.js 16 · App Router · React 19 · Tailwind v4 · Zustand. Los datos
 persisten siempre en PostgreSQL vía Prisma (SPEC-006, SPEC-011), con sesión
-en el servidor (SPEC-008). No hay modo localStorage.
+de NextAuth en el servidor (SPEC-018). No hay modo localStorage.
 
 ---
 
@@ -60,7 +60,7 @@ vive en tres stores de Zustand:
 lib/stores/asignacion-store.ts   las asignaciones   → PostgreSQL (persist)
 lib/stores/config-store.ts       la parametrización → PostgreSQL (persist)
 lib/stores/novedades-store.ts    las novedades      → PostgreSQL (persist)
-lib/stores/sesion-store.ts       la sesión          → local o session, a mano
+lib/stores/sesion-store.ts       la sesión          → la cookie de NextAuth, solo consulta
 ```
 
 Los tres primeros persisten por `almacenamiento()` de
@@ -102,12 +102,25 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
 ```
 
-### 3. La sesión no usa el middleware `persist`
+### 3. La sesión es la cookie de NextAuth, y vence por inactividad
 
-"Recordarme" decide el destino: `localStorage` sobrevive al cierre del navegador,
-`sessionStorage` no. `persist` fija un solo destino, así que `sesion-store.ts`
-guarda, lee y borra a mano —y envuelve **todo** acceso a storage en `try/catch`,
-porque en modo privado revienta. Respeta ese patrón si lo tocas.
+`src/auth.ts` configura NextAuth (SPEC-018). La cookie es httpOnly: el
+navegador no guarda la sesión en ningún storage ni lleva reloj propio;
+`sesion-store.ts` pregunta a `/api/auth/session`. Antes había dos relojes
+de una hora y vencían a destiempo: no vuelvas a poner uno.
+
+- **Dura 8 h sin actividad**, no 8 h desde el login. `auth()` en un route
+  handler **no** renueva la cookie (NextAuth descarta su `set-cookie`); la
+  renueva `renovar()` del store, que `ReingresoSesion` llama con la
+  actividad del usuario.
+- **Si vence con la página abierta no se manda al login**: el 401 marca
+  `vencida`, `ReingresoSesion` pide la clave y `reanudarGuardado()` reenvía
+  lo pendiente. Ir al login recargaría los stores y perdería el cambio.
+- **El token se compara con `public.usuario` cada 15 min** (`refrescarToken`):
+  desactivar a alguien o cambiarle el rol llega solo.
+- **"Recordarme"** lo resuelve la ruta `api/auth/[...nextauth]` quitando la
+  fecha a la cookie según `cecar-recordarme`; NextAuth no lo trae.
+- Desde el servidor, el usuario siempre sale de `usuarioActual()`.
 
 ### 4. El orden de las clases de Tailwind no es especificidad
 
@@ -169,6 +182,13 @@ comparar fechas a mano.
 los cursos en `asignacion.lineaBase`; reabrir y corregir no la toca. El
 reporte de proyección compara esa foto con lo vigente. Solo `aprobar` la
 fija, y el servidor rechaza cualquier otro cambio.
+
+**Las importadas no son del ciclo (SPEC-017).** Una asignación cargada
+desde el Excel de un periodo anterior nace aprobada con un único evento
+`importada`; `esImportada(a)` lo detecta. No se reabre, no se edita, no
+entra en el impacto de parámetros ni en la proyección, y en el comparativo
+solo reemplaza al consolidado cuando el periodo tiene todos sus programas
+(`coberturaImportada`).
 
 **La bitácora es append-only.** Cada transición agrega un evento con quién,
 cuándo y por qué; los eventos no se editan ni se borran, porque su valor está en
@@ -254,7 +274,9 @@ app/admin/asignaciones           bandejas: aprobar, devolver, abrir convocatoria
 app/admin/novedades              cambios con la convocatoria cerrada y a quién afectaron
 app/admin/observaciones          cambios con la convocatoria abierta
 app/admin/datos                  respaldo: exportar e importar todo en JSON
+app/admin/datos/importar         asignaciones de periodos anteriores desde Excel (SPEC-017)
 app/admin/reportes               reportes; el cuadro resumen del consolidado
+app/criterios                    criterios de asignación del periodo (los dos roles)
 
 lib/catalogos.ts     datos del formato oficial ← NO EDITAR A MANO
 lib/calculo.ts       motor de cálculo y validaciones ← PURO
@@ -267,22 +289,30 @@ lib/verificar-transiciones.ts   prueba del ciclo con las acciones del store
 lib/novedades.ts     diferencias de parámetros y foto de impacto ← PURO
 lib/resumen.ts       totales por asignación y separarEnProgreso()
 lib/reportes.ts      cuadro resumen, comparativo y proyección ← PURO
+lib/criterios.ts     texto de los criterios del Consejo Académico ← CONSULTA, NO REGLAS
 lib/historicos.ts    cifras 2022-1…2025-2 del consolidado ← GENERADO, NO EDITAR A MANO
 components/Graficas.tsx   gráficas SVG de los reportes (paleta validada, ver el comentario)
 lib/exportar-cuadro.ts   el cuadro en .xlsx (exceljs bajo demanda)
 lib/exportar-formato.ts  una asignación en el formato oficial .xlsx
 lib/exportar-comparativo.ts   el comparativo y la proyección en .xlsx
+lib/cursos-conocidos.ts   sugerencias y duplicado de cursos ← PURO (SPEC-019)
+lib/verificar-cursos.ts   prueba de lo anterior
 lib/verificar.ts     prueba contra los 45 docentes reales
 lib/verificar-novedades.ts   prueba de la lógica de novedades
 lib/verificar-respaldo.ts    prueba del respaldo JSON
 lib/verificar-reportes.ts    prueba del cuadro resumen contra el motor
+lib/importar/*       leer un Excel de asignación de cualquier año ← PURO (SPEC-017)
+lib/verificar-importacion.ts   prueba del importador contra el formato real
+app/api/importar     guarda una asignación importada (solo administrador)
 lib/datos/almacen.ts         dónde persisten los stores ← punto de cambio a SQL
 lib/datos/respaldo.ts        formato y validación del respaldo ← PURO
 lib/servidor/*       conexión (Prisma), lectura y escritura en PostgreSQL ← SOLO SERVIDOR
 lib/servidor/verificar-sql.ts   prueba de ida y vuelta contra la base
 app/api/estado/[clave]       la API de estado (exige la cookie de sesión)
-app/api/sesion               iniciar y cerrar sesión: cookie httpOnly firmada
-lib/servidor/sesion.ts       firma de la cookie y verificarCredenciales() ← AQUÍ ENTRA ALDEA
+src/auth.ts                  NextAuth: proveedor de credenciales y callbacks (SPEC-018)
+app/api/auth/[...nextauth]   login, logout y sesión de NextAuth; "Recordarme"
+lib/servidor/sesion.ts       qué lleva el token, usuarioActual() y verificarCredenciales() ← AQUÍ ENTRA ALDEA
+components/ReingresoSesion.tsx   renueva la sesión con la actividad y pide la clave si vence
 lib/servidor/aldea.ts        la API de credenciales + public.usuario (SPEC-010)
 app/api/salud                sonda del despliegue: ¿hay base y secreto?
 DESPLIEGUE.md                paso a paso para producción
@@ -293,10 +323,11 @@ db/                  respaldo-a-sql.ts, prueba-esquema.sql, generar-historicos.t
 .env.example         todas las variables; la base es DATABASE_URL
 src/generated/prisma cliente de Prisma ← generado en postinstall, fuera de git
 specs/               especificaciones (Spec-Driven Development)
-lib/auth/sesion.ts   usuarios de prueba, roles y autenticar() del navegador
+lib/auth/sesion.ts   tipos, roles y usuarios de prueba (navegador y servidor)
+lib/auth/cliente.ts  autenticar() y leerSesion() del navegador, vía NextAuth
 lib/stores/*         estado persistido
 
-components/ui.tsx    Campo, Entrada, Seleccion, Seccion, Boton…
+components/ui.tsx    Campo, Entrada, Seleccion, SelectorBuscable, Contador, Seccion, Boton…
 components/*         el resto de piezas compartidas
 ```
 
@@ -328,7 +359,9 @@ npx tsx src/lib/verificar-novedades.ts   # si tocaste lib/novedades.ts
 npx tsx src/lib/verificar-respaldo.ts    # si tocaste lib/datos/ o los tipos
 npx tsx src/lib/verificar-reportes.ts    # si tocaste lib/reportes.ts, exportar-*.ts o el cálculo
 npx tsx src/lib/verificar-transiciones.ts   # si tocaste el ciclo de vida o el store de asignaciones
+npx tsx src/lib/verificar-importacion.ts "<ASIGNACION_IS_2026_2PV3.xlsx>"   # si tocaste lib/importar/, transiciones o reportes
 npx tsx src/lib/servidor/verificar-sesion.ts   # si tocaste la sesión o lib/auth/
+npx tsx src/lib/verificar-cursos.ts   # si tocaste lib/cursos-conocidos.ts
 DATABASE_URL=postgresql://…/asignacion_academica_prueba npx tsx src/lib/servidor/verificar-sql.ts   # si tocaste lib/servidor/ o los tipos
 ```
 

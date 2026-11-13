@@ -17,7 +17,8 @@ import {
   type ClaseRegistro,
   type Novedad,
 } from "@/lib/novedades";
-import { legible } from "@/lib/resumen";
+import { legible, nombreFacultad } from "@/lib/resumen";
+import { esImportada } from "@/lib/tipos";
 import { fechaHoraLegible, fechaLegible } from "@/lib/convocatoria";
 import Encabezado from "@/components/Encabezado";
 import Modal from "@/components/Modal";
@@ -173,7 +174,7 @@ function Afectada({ novedad, afectada: a }: { novedad: Novedad; afectada: Afecta
   const autor: Autor | null = usuario ? { nombres: usuario.nombres, rol: usuario.rol } : null;
 
   // Solo lo aprobado se reabre; si ya se reabrió por otra vía, no hay qué hacer.
-  const puedeReabrir = actual?.estado === "aprobada" && vigente?.accion !== "reabierta";
+  const puedeReabrir = actual?.estado === "aprobada" && !esImportada(actual) && vigente?.accion !== "reabierta";
   const puedeDescartar = !vigente;
 
   return (
@@ -193,7 +194,7 @@ function Afectada({ novedad, afectada: a }: { novedad: Novedad; afectada: Afecta
             </p>
           )}
           <p className="mt-0.5 truncate text-xs text-[var(--color-texto-suave)]">
-            {legible(a.facultad) || "Facultad sin definir"} · periodo {a.periodo}
+            {nombreFacultad(a.facultad) || "Facultad sin definir"} · periodo {a.periodo}
           </p>
         </div>
 

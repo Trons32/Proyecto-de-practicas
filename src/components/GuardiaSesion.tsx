@@ -12,7 +12,8 @@ import { inicioDeRol } from "@/lib/auth/sesion";
  * · con sesión en /login  → a su dashboard
  * · coordinador en /admin → a su inicio
  *
- * Mientras la sesión se restaura no se pinta nada, para no mostrar por un
+ * La sesión la dice el servidor (la cookie de NextAuth es httpOnly), así que
+ * mientras se pregunta no se pinta nada, para no mostrar por un
  * instante contenido que el usuario quizá no puede ver.
  */
 export default function GuardiaSesion({ children }: { children: React.ReactNode }) {
@@ -26,7 +27,7 @@ export default function GuardiaSesion({ children }: { children: React.ReactNode 
   const cambioClave = ruta === "/cambiar-clave";
 
   useEffect(() => {
-    restaurar();
+    void restaurar();
   }, [restaurar]);
 
   const rol = sesion?.usuario.rol;

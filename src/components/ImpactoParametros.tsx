@@ -7,7 +7,7 @@ import { useNovedadesStore } from "@/lib/stores/novedades-store";
 import { useSesionStore } from "@/lib/stores/sesion-store";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import { asignacionesAfectadas } from "@/lib/impacto";
-import { legible } from "@/lib/resumen";
+import { legible, nombreFacultad } from "@/lib/resumen";
 import { fechaLegible, finDelDia } from "@/lib/convocatoria";
 import Modal from "@/components/Modal";
 import { Boton, Campo, Entrada, Insignia } from "@/components/ui";
@@ -124,7 +124,7 @@ export default function ImpactoParametros() {
                     {legible(a.programa) || "Programa sin definir"}
                   </Link>
                   <p className="mt-0.5 truncate text-xs text-[var(--color-texto-suave)]">
-                    {legible(a.facultad) || "Facultad sin definir"} · periodo {a.periodo}
+                    {nombreFacultad(a.facultad) || "Facultad sin definir"} · periodo {a.periodo}
                   </p>
                 </div>
 

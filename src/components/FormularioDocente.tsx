@@ -17,6 +17,8 @@ import {
   type Rol as RolDescarga,
 } from "@/lib/catalogos";
 import { useConfigStore } from "@/lib/stores/config-store";
+import { useAsignacionStore } from "@/lib/stores/asignacion-store";
+import { buscarFicha, catalogoDeCursos, completarCurso, fichasDePrograma, grupoSiguiente, resumenCurso } from "@/lib/cursos-conocidos";
 import {
   Docente,
   Curso,
@@ -29,9 +31,9 @@ import {
 } from "@/lib/tipos";
 import { calcularTotales, validarDocente, Hallazgo, Totales } from "@/lib/calculo";
 import { REGLAS, type CamposDocente } from "@/lib/esquema-docente";
-import { Campo, Entrada, Seleccion, Seccion, Boton, Insignia } from "./ui";
+import { Campo, Contador, Entrada, Seleccion, Seccion, SelectorBuscable, Boton, Insignia, type OpcionBuscable } from "./ui";
 import { sileo } from "@/lib/toast";
-import { FiPlus, FiTrash2, FiRefreshCw, FiSave } from "./iconos";
+import { FiPlus, FiTrash2, FiRefreshCw, FiSave, FiCopy, FiChevronDown, FiAlertCircle, FiCheckCircle } from "./iconos";
 
 const ETIQUETA_TIPO = {
   DOCENCIA: "Docencia",
@@ -41,6 +43,10 @@ const ETIQUETA_TIPO = {
 
 /** El tipo no va en el texto de la opción: lo muestra la insignia de al lado. */
 // Se construye dentro del componente: los roles son parametrizables.
+
+/** Le falta algo obligatorio: no se puede guardar así. */
+const cursoIncompleto = (c: Curso) =>
+  !c.nombreCurso.trim() || !c.intensidadHoraria || !c.creditos || !c.jornada || !c.modalidad;
 
 /** Los tres componentes del apoyo académico, en el orden del formato. */
 const APOYO = [
@@ -140,9 +146,17 @@ export default function FormularioDocente({
   // el desplegable lo mostraría vacío y parecería que se perdió (SPEC-012).
   const OPCIONES_ROL = useMemo(() => {
     const enUso = new Set([...docente.descargas, ...docente.administrativas].map((x) => x.rolId));
+    // Agrupados por tipo y en orden alfabético (SPEC-020): en el orden del
+    // formato, 56 nombres seguidos no se dejaban recorrer.
+    const orden = ["DOCENCIA", "INVESTIGACION", "EXTENSION"] as const;
     return roles
       .filter((r) => !r.inactivo || enUso.has(r.id))
-      .map((r) => ({ valor: String(r.id), texto: r.inactivo ? `${r.nombre} (inactivo)` : r.nombre }));
+      .sort((a, b) => orden.indexOf(a.tipo) - orden.indexOf(b.tipo) || a.nombre.localeCompare(b.nombre, "es"))
+      .map((r): OpcionBuscable => ({
+        valor: String(r.id),
+        texto: r.inactivo ? `${r.nombre} (inactivo)` : r.nombre,
+        grupo: ETIQUETA_TIPO[r.tipo],
+      }));
   }, [roles, docente.descargas, docente.administrativas]);
 
   const regla = reglas[docente.dedicacion];
@@ -229,9 +243,121 @@ export default function FormularioDocente({
     const curso = docente.cursos.find((x) => x.id === id);
     const siguiente = curso && { ...curso, ...cambios };
     set("cursos", docente.cursos.map((x) => (x.id === id ? { ...x, ...cambios } : x)));
-    if (siguiente && siguiente.nombreCurso.trim() && siguiente.intensidadHoraria && siguiente.creditos && siguiente.jornada && siguiente.modalidad) {
-      quitarFilaPendiente(id);
+    if (siguiente && !cursoIncompleto(siguiente)) quitarFilaPendiente(id);
+  };
+
+  /* ---------- cursos: plegar, duplicar, autocompletar (SPEC-019) ---------- */
+  /**
+   * Con muchos cursos, tarjetas de 12 campos abiertas hacían una página
+   * interminable. Los completos se pliegan en una línea de resumen; los que
+   * faltan por llenar arrancan abiertos.
+   */
+  const [abiertos, setAbiertos] = useState<Set<string>>(
+    () => new Set(docente.cursos.filter(cursoIncompleto).map((c) => c.id))
+  );
+  const abrir = (ids: Iterable<string>) =>
+    setAbiertos((actuales) => new Set([...actuales, ...ids]));
+  const alternar = (id: string, abierto: boolean) =>
+    setAbiertos((actuales) => {
+      if (actuales.has(id) === abierto) return actuales;
+      const siguientes = new Set(actuales);
+      if (abierto) siguientes.add(id);
+      else siguientes.delete(id);
+      return siguientes;
+    });
+
+  /** El campo al que hay que llevar al usuario cuando su curso ya esté pintado. */
+  const enfocar = useRef<string | null>(null);
+  useEffect(() => {
+    const id = enfocar.current;
+    if (!id) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    enfocar.current = null;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.focus({ preventScroll: true });
+  }, [docente.cursos, docente.descargas, docente.administrativas, abiertos]);
+
+  // Lo ya registrado en cualquier asignación —también las importadas de
+  // periodos anteriores— sirve para no volver a escribir la ficha del curso.
+  const asignaciones = useAsignacionStore((s) => s.asignaciones);
+  const catalogo = useMemo(() => catalogoDeCursos(asignaciones), [asignaciones]);
+  const programasEnUso = [...new Set(docente.cursos.map((c) => c.nombrePrograma))];
+  const listaDe = (programa: string, tipo: "nombre" | "codigo") =>
+    `fichas-${tipo}-${programasEnUso.indexOf(programa)}`;
+
+  const hayCupo = () => {
+    if (docente.cursos.length < limites.maxCursos) return true;
+    sileo.warning({
+      title: "Límite de cursos alcanzado",
+      description: `El formato permite hasta ${limites.maxCursos} cursos por docente.`,
+    });
+    return false;
+  };
+
+  /** Un curso nuevo hereda del anterior lo que casi nunca cambia entre cursos. */
+  const agregarCurso = () => {
+    if (!hayCupo()) return;
+    const ultimo = docente.cursos.at(-1);
+    const programa = ultimo?.nombrePrograma || programaPorDefecto;
+    const nuevo: Curso = {
+      ...nuevoCurso(),
+      nombrePrograma: programa,
+      codigoPrograma: ultimo?.nombrePrograma ? ultimo.codigoPrograma : codigoDePrograma(programa),
+      jornada: ultimo?.jornada ?? "",
+      modalidad: ultimo?.modalidad ?? "",
+    };
+    set("cursos", [...docente.cursos, nuevo]);
+    abrir([nuevo.id]);
+    enfocar.current = `curso-nombre-${nuevo.id}`;
+  };
+
+  /** El mismo curso en otro grupo: el caso más repetido del formato. */
+  const duplicarCurso = (curso: Curso) => {
+    if (!hayCupo()) return;
+    const copia: Curso = {
+      ...curso,
+      id: nuevoCurso().id,
+      grupo: grupoSiguiente(curso.grupo, GRUPOS),
+      estudiantes: null,
+    };
+    const i = docente.cursos.findIndex((x) => x.id === curso.id);
+    set("cursos", [...docente.cursos.slice(0, i + 1), copia, ...docente.cursos.slice(i + 1)]);
+    abrir([copia.id]);
+    enfocar.current = `curso-grupo-${copia.id}`;
+  };
+
+  /* ---------- descargas y actividades (SPEC-020) ---------- */
+  /** La fila nueva abre su buscador de rol: es lo primero que hay que elegir. */
+  const agregarDescarga = () => {
+    if (docente.descargas.length >= limites.maxDescargas) {
+      sileo.warning({
+        title: "Límite de descargas alcanzado",
+        description: `El formato permite hasta ${limites.maxDescargas} descargas directas (R1, R2, R3).`,
+      });
+      return;
     }
+    const nueva = nuevaDescarga();
+    set("descargas", [...docente.descargas, nueva]);
+    enfocar.current = `rol-${nueva.id}`;
+  };
+  const agregarActividad = () => {
+    if (docente.administrativas.length >= limites.maxAdministrativas) {
+      sileo.warning({
+        title: "Límite de actividades alcanzado",
+        description: `El formato permite hasta ${limites.maxAdministrativas} actividades administrativas (R1, R2, R3).`,
+      });
+      return;
+    }
+    const nueva = nuevaAdministrativa();
+    set("administrativas", [...docente.administrativas, nueva]);
+    enfocar.current = `rol-${nueva.id}`;
+  };
+
+  /** Al escribir nombre o código, completa lo vacío con la ficha conocida. */
+  const escribirFicha = (curso: Curso, cambio: { nombreCurso: string } | { codigoCurso: string }) => {
+    const ficha = buscarFicha(fichasDePrograma(catalogo, curso.nombrePrograma), cambio);
+    setCurso(curso.id, { ...cambio, ...(ficha ? completarCurso({ ...curso, ...cambio }, ficha) : {}) });
   };
 
   const num = (v: string): number | null => (v === "" ? null : Number(v));
@@ -258,11 +384,12 @@ export default function FormularioDocente({
     const rhfValido = seccion === "docente" ? await trigger(camposDeDocente) : true;
     // No usamos el análisis recibido por props: puede corresponder al render
     // anterior. Aquí se recalcula con el borrador exacto que va a persistirse.
-    const hallazgosActuales = validarDocente(docente, calcularTotales(docente, { roles, reglas }));
+    const totalesActuales = calcularTotales(docente, { roles, reglas });
+    const hallazgosActuales = validarDocente(docente, totalesActuales);
     const filasIncompletas = new Set(
       seccion === "cursos"
         ? docente.cursos
-            .filter((curso) => !curso.nombreCurso.trim() || !curso.intensidadHoraria || !curso.creditos || !curso.jornada || !curso.modalidad)
+            .filter(cursoIncompleto)
             .map((curso) => curso.id)
         : seccion === "descargas"
           ? docente.descargas
@@ -275,6 +402,28 @@ export default function FormularioDocente({
             : []
     );
     setFilasPendientes(filasIncompletas);
+    if (seccion === "cursos") {
+      // Un curso plegado con errores no se vería: se abre y se lleva allí.
+      const conError = docente.cursos.filter(
+        (c, i) => filasIncompletas.has(c.id) || hallazgosActuales.some((h) => h.severidad === "error" && h.campo === `curso-${i}`)
+      );
+      abrir(conError.map((c) => c.id));
+      if (conError[0]) enfocar.current = `curso-nombre-${conError[0].id}`;
+    }
+    // Guardar persiste el docente entero, no solo la pestaña: con el total
+    // por encima del tope no se guarda desde ninguna (SPEC-020). Antes solo
+    // lo revisaba la pestaña Apoyo, y Cursos o Descargas guardaban 15 h de 12.
+    const { totalSemanal, maxHoras } = totalesActuales;
+    if (maxHoras !== null && totalSemanal > maxHoras) {
+      sileo.error({
+        title: "No se guardó: se superó el máximo de horas",
+        description:
+          `${totalSemanal} h asignadas sobre un máximo de ${maxHoras} h para ` +
+          `${docente.dedicacion.replace(/_/g, " ").toLowerCase()}. Reduzca ${totalSemanal - maxHoras} h ` +
+          "en cursos, descargas, actividades o apoyo.",
+      });
+      return;
+    }
     if (!rhfValido || filasIncompletas.size > 0 || tieneErrorDeSeccion(seccion, hallazgosActuales)) {
       sileo.error({ title: "Revise los campos marcados", description: "Hay datos pendientes o inválidos en esta sección." });
       return;
@@ -283,9 +432,30 @@ export default function FormularioDocente({
     setFilasPendientes(new Set());
     sileo.success({ title: "Cambios guardados" });
   };
-  const accionGuardar = (etiqueta: string, seccion: "docente" | "cursos" | "descargas" | "actividades" | "apoyo") => (
-    <Boton onClick={() => void guardarSeccion(seccion)}><FiSave aria-hidden /> {etiqueta}</Boton>
-  );
+  /**
+   * El pie de cada pestaña: el botón y, a su lado, cómo va el total del
+   * docente contra su tope. Así el bloqueo por exceso no llega por sorpresa.
+   */
+  const pieGuardar = (etiqueta: string, seccion: "docente" | "cursos" | "descargas" | "actividades" | "apoyo") => {
+    const { totalSemanal, maxHoras } = totales;
+    const estado =
+      maxHoras === null
+        ? null
+        : totalSemanal > maxHoras
+          ? { tono: "text-rose-700", icono: FiAlertCircle, texto: `${totalSemanal} h de ${maxHoras} h · excede por ${totalSemanal - maxHoras} h. Ajuste antes de guardar.` }
+          : totalSemanal === maxHoras
+            ? { tono: "text-cecar-700", icono: FiCheckCircle, texto: `${totalSemanal} h de ${maxHoras} h · completo` }
+            : { tono: "text-[var(--color-texto-suave)]", icono: null, texto: `${totalSemanal} h de ${maxHoras} h · faltan ${maxHoras - totalSemanal} h` };
+    return (
+      <div className="mt-6 -mx-5 -mb-5 flex flex-wrap items-center justify-between gap-3 rounded-b-xl bg-cecar-50/60 px-5 py-3">
+        <p className={`flex items-center gap-1.5 text-sm ${estado?.tono ?? ""}`} aria-live="polite">
+          {estado?.icono && <estado.icono className="h-4 w-4 shrink-0" aria-hidden />}
+          {estado?.texto}
+        </p>
+        <Boton onClick={() => void guardarSeccion(seccion)}><FiSave aria-hidden /> {etiqueta}</Boton>
+      </div>
+    );
+  };
 
   // El resumen de dedicación lo coloca la página, en su propia columna
   // sticky: así sobrevive al ancho que le quita la barra lateral.
@@ -470,9 +640,7 @@ export default function FormularioDocente({
               />
             </Campo>
           </div>
-          {!soloLectura && <div className="mt-6 -mx-5 -mb-5 flex justify-end rounded-b-xl bg-cecar-50/60 px-5 py-3">
-            {accionGuardar("Guardar docente", "docente")}
-          </div>}
+          {!soloLectura && pieGuardar("Guardar docente", "docente")}
         </Seccion>
         </div>
 
@@ -481,30 +649,57 @@ export default function FormularioDocente({
         <Seccion
           titulo="Cursos asignados"
           descripcion={`${docente.cursos.length} de ${limites.maxCursos} · las horas de clase salen de la intensidad horaria`}
-          accion={<Boton
-              variante="secundario"
-              onClick={() => {
-                if (docente.cursos.length >= limites.maxCursos) {
-                  sileo.warning({
-                    title: "Límite de cursos alcanzado",
-                    description: `El formato permite hasta ${limites.maxCursos} cursos por docente.`,
-                  });
-                  return;
-                }
-                set("cursos", [
-                  ...docente.cursos,
-                  {
-                    ...nuevoCurso(),
-                    nombrePrograma: programaPorDefecto,
-                    codigoPrograma: codigoDePrograma(programaPorDefecto),
-                  },
-                ]);
-              }}
-            >
-              <FiPlus aria-hidden /> Agregar curso
-            </Boton>}
+          accion={!soloLectura && (
+            <div className="flex flex-wrap items-center gap-2">
+              {docente.cursos.length > 1 && (
+                <Boton
+                  variante="fantasma"
+                  className="text-xs"
+                  onClick={() =>
+                    abiertos.size === docente.cursos.length
+                      ? setAbiertos(new Set())
+                      : abrir(docente.cursos.map((c) => c.id))
+                  }
+                >
+                  {abiertos.size === docente.cursos.length ? "Plegar todos" : "Desplegar todos"}
+                </Boton>
+              )}
+              <Boton variante="secundario" onClick={agregarCurso}>
+                <FiPlus aria-hidden /> Agregar curso
+              </Boton>
+            </div>
+          )}
         >
-          <div className="space-y-4">
+          {/* Sugerencias por programa: el mismo nombre puede ser otro curso
+              en otra carrera. */}
+          {programasEnUso.map((programa) => {
+            const fichas = fichasDePrograma(catalogo, programa);
+            return (
+              <div key={programa} hidden>
+                <datalist id={listaDe(programa, "nombre")}>
+                  {fichas.map((f) => (
+                    <option
+                      key={f.nombreCurso}
+                      value={f.nombreCurso}
+                      label={[
+                        f.codigoCurso && `Cód. ${f.codigoCurso}`,
+                        f.semestre !== null && `Sem ${f.semestre}`,
+                        f.intensidadHoraria !== null && `${f.intensidadHoraria} h`,
+                        f.creditos !== null && `${f.creditos} cr`,
+                      ].filter(Boolean).join(" · ")}
+                    />
+                  ))}
+                </datalist>
+                <datalist id={listaDe(programa, "codigo")}>
+                  {fichas.filter((f) => f.codigoCurso.trim()).map((f) => (
+                    <option key={`${f.codigoCurso}-${f.nombreCurso}`} value={f.codigoCurso} label={f.nombreCurso} />
+                  ))}
+                </datalist>
+              </div>
+            );
+          })}
+
+          <div className="space-y-3">
             {docente.cursos.map((c, i) => {
               const cursoPendiente = filasPendientes.has(c.id) || errores.has(`curso-${i}`);
               const nombreInvalido = cursoPendiente && !c.nombreCurso.trim();
@@ -512,30 +707,72 @@ export default function FormularioDocente({
               const intensidadInvalida = cursoPendiente && !c.intensidadHoraria;
               const creditosInvalidos = cursoPendiente && !c.creditos;
               const modalidadInvalida = cursoPendiente && !c.modalidad;
+              const incompleto = cursoIncompleto(c);
+              const resumen = resumenCurso(c);
+              const nombreVisible = c.nombreCurso.trim() || `curso ${i + 1}`;
               return (
-              <div
+              // <details> y no un botón: el fieldset de solo lectura desactiva
+              // los botones, y quien revisa también necesita desplegar.
+              <details
                 key={c.id}
-                className="rounded-xl border border-[var(--color-borde)] bg-[var(--color-superficie)]/50 p-4 sm:p-5"
+                open={abiertos.has(c.id)}
+                onToggle={(e) => alternar(c.id, e.currentTarget.open)}
+                className="group rounded-xl border border-[var(--color-borde)] bg-[var(--color-superficie)]/50"
               >
-                <div className="mb-3 flex items-center justify-between">
-                  <Insignia tono="verde">Curso {i + 1}</Insignia>
-                  {docente.cursos.length > 1 && (
-                    <Boton
-                      variante="peligro"
-                      className="px-2 py-1 text-xs"
-                      onClick={() =>
-                        set(
-                          "cursos",
-                          docente.cursos.filter((x) => x.id !== c.id)
-                        )
-                      }
-                    >
-                      <FiTrash2 aria-hidden /> Quitar
-                    </Boton>
+                <summary className="flex cursor-pointer list-none items-center gap-3 rounded-xl px-4 py-3 hover:bg-cecar-50/50 sm:px-5 [&::-webkit-details-marker]:hidden">
+                  <FiChevronDown
+                    className="h-4 w-4 shrink-0 text-[var(--color-texto-suave)] transition-transform group-open:rotate-180"
+                    aria-hidden
+                  />
+                  <Insignia tono={incompleto ? "ambar" : "verde"}>Curso {i + 1}</Insignia>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[var(--color-texto)]">
+                      {c.nombreCurso.trim() || "Curso sin nombre"}
+                    </p>
+                    {/* El detalle solo hace falta plegado: abierto ya se ven los campos. */}
+                    <p className="truncate text-xs text-[var(--color-texto-suave)] group-open:hidden">
+                      {incompleto && (
+                        <span className="me-1 inline-flex items-center gap-1 text-amber-700">
+                          <FiAlertCircle className="h-3.5 w-3.5" aria-hidden /> Faltan datos obligatorios
+                          {resumen.length > 0 && " ·"}
+                        </span>
+                      )}
+                      {resumen.join(" · ")}
+                    </p>
+                  </div>
+                  {!soloLectura && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Boton
+                        variante="fantasma"
+                        className="px-2 py-1 text-xs"
+                        title="Duplicar para otro grupo"
+                        aria-label={`Duplicar ${nombreVisible} para otro grupo`}
+                        onClick={(e) => {
+                          // Dentro del <summary>, el clic también plegaría la tarjeta.
+                          e.preventDefault();
+                          duplicarCurso(c);
+                        }}
+                      >
+                        <FiCopy aria-hidden /> <span className="hidden sm:inline">Duplicar</span>
+                      </Boton>
+                      {docente.cursos.length > 1 && (
+                        <Boton
+                          variante="peligro"
+                          className="px-2 py-1 text-xs"
+                          aria-label={`Quitar ${nombreVisible}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            set("cursos", docente.cursos.filter((x) => x.id !== c.id));
+                          }}
+                        >
+                          <FiTrash2 aria-hidden /> <span className="hidden sm:inline">Quitar</span>
+                        </Boton>
+                      )}
+                    </div>
                   )}
-                </div>
+                </summary>
 
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 border-t border-[var(--color-borde)] p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4">
                   {/* El curso puede pertenecer a otro programa cuando el
                       docente presta servicio a varias carreras. */}
                   <Campo etiqueta="Programa" className="xl:col-span-3">
@@ -562,16 +799,26 @@ export default function FormularioDocente({
                   <Campo etiqueta="Código curso">
                     <Entrada
                       value={c.codigoCurso}
-                      onChange={(e) => setCurso(c.id, { codigoCurso: e.target.value })}
+                      list={listaDe(c.nombrePrograma, "codigo")}
+                      autoComplete="off"
+                      onChange={(e) => escribirFicha(c, { codigoCurso: e.target.value })}
                       placeholder="4623"
                     />
                   </Campo>
 
-                  <Campo etiqueta="Nombre del curso" requerido className="lg:col-span-3">
+                  <Campo
+                    etiqueta="Nombre del curso"
+                    requerido
+                    className="lg:col-span-3"
+                    ayuda="Escriba o elija un curso ya registrado: se llenan código, pensum, semestre, intensidad y créditos."
+                  >
                     <Entrada
+                      id={`curso-nombre-${c.id}`}
                       value={c.nombreCurso}
                       error={nombreInvalido}
-                      onChange={(e) => setCurso(c.id, { nombreCurso: e.target.value.toUpperCase() })}
+                      list={listaDe(c.nombrePrograma, "nombre")}
+                      autoComplete="off"
+                      onChange={(e) => escribirFicha(c, { nombreCurso: e.target.value.toUpperCase() })}
                       placeholder="REDES DE COMPUTADORES I"
                     />
                   </Campo>
@@ -594,6 +841,7 @@ export default function FormularioDocente({
 
                   <Campo etiqueta="Grupo / bloque">
                     <Seleccion
+                      id={`curso-grupo-${c.id}`}
                       opciones={GRUPOS}
                       value={c.grupo}
                       onChange={(e) => setCurso(c.id, { grupo: e.target.value })}
@@ -652,13 +900,21 @@ export default function FormularioDocente({
                     />
                   </Campo>
                 </div>
-              </div>
+              </details>
               );
             })}
           </div>
-          {!soloLectura && <div className="mt-6 -mx-5 -mb-5 flex justify-end rounded-b-xl bg-cecar-50/60 px-5 py-3">
-            {accionGuardar("Guardar cursos", "cursos")}
-          </div>}
+          {/* Con la lista larga, el botón de arriba queda lejos. */}
+          {!soloLectura && docente.cursos.length < limites.maxCursos && (
+            <button
+              type="button"
+              onClick={agregarCurso}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-cecar-200 py-3 text-sm font-medium text-cecar-700 transition hover:border-cecar-300 hover:bg-cecar-50"
+            >
+              <FiPlus aria-hidden /> Agregar curso
+            </button>
+          )}
+          {!soloLectura && pieGuardar("Guardar cursos", "cursos")}
         </Seccion>
         </div>
 
@@ -669,22 +925,12 @@ export default function FormularioDocente({
           <div className={pasoActivo === 2 ? "" : "hidden"}>
           <Seccion
             titulo="Descargas directas"
-            descripcion={`${docente.descargas.length} de ${limites.maxDescargas}`}
-            accion={<Boton
-                variante="secundario"
-                onClick={() => {
-                  if (docente.descargas.length >= limites.maxDescargas) {
-                    sileo.warning({
-                      title: "Límite de descargas alcanzado",
-                      description: `El formato permite hasta ${limites.maxDescargas} descargas directas (R1, R2, R3).`,
-                    });
-                    return;
-                  }
-                  set("descargas", [...docente.descargas, nuevaDescarga()]);
-                }}
-              >
+            descripcion={`${docente.descargas.length} de ${limites.maxDescargas} · ${totales.totalDescargas} h`}
+            accion={!soloLectura && docente.descargas.length > 0 && (
+              <Boton variante="secundario" onClick={agregarDescarga}>
                 <FiPlus aria-hidden /> Agregar
-              </Boton>}
+              </Boton>
+            )}
           >
             <ListaActividades
               roles={roles}
@@ -692,6 +938,9 @@ export default function FormularioDocente({
               items={docente.descargas}
               prefijo="R"
               vacio="Sin descargas directas."
+              etiquetaAgregar="Agregar descarga"
+              onAgregar={soloLectura ? undefined : agregarDescarga}
+              maximo={limites.maxDescargas}
               filasPendientes={filasPendientes}
               onCambio={setDescarga}
               onQuitar={(x) =>
@@ -701,31 +950,19 @@ export default function FormularioDocente({
                 )
               }
             />
-            {!soloLectura && <div className="mt-6 -mx-5 -mb-5 flex justify-end rounded-b-xl bg-cecar-50/60 px-5 py-3">
-              {accionGuardar("Guardar descargas", "descargas")}
-            </div>}
+            {!soloLectura && pieGuardar("Guardar descargas", "descargas")}
           </Seccion>
           </div>
 
           <div className={pasoActivo === 3 ? "" : "hidden"}>
           <Seccion
             titulo="Actividades administrativas"
-            descripcion={`${docente.administrativas.length} de ${limites.maxAdministrativas}`}
-            accion={<Boton
-                variante="secundario"
-                onClick={() => {
-                  if (docente.administrativas.length >= limites.maxAdministrativas) {
-                    sileo.warning({
-                      title: "Límite de actividades alcanzado",
-                      description: `El formato permite hasta ${limites.maxAdministrativas} actividades administrativas (R1, R2, R3).`,
-                    });
-                    return;
-                  }
-                  set("administrativas", [...docente.administrativas, nuevaAdministrativa()]);
-                }}
-              >
+            descripcion={`${docente.administrativas.length} de ${limites.maxAdministrativas} · ${totales.totalAdministrativas} h`}
+            accion={!soloLectura && docente.administrativas.length > 0 && (
+              <Boton variante="secundario" onClick={agregarActividad}>
                 <FiPlus aria-hidden /> Agregar
-              </Boton>}
+              </Boton>
+            )}
           >
             <ListaActividades
               roles={roles}
@@ -733,6 +970,9 @@ export default function FormularioDocente({
               items={docente.administrativas}
               prefijo="R"
               vacio="Sin actividades administrativas."
+              etiquetaAgregar="Agregar actividad"
+              onAgregar={soloLectura ? undefined : agregarActividad}
+              maximo={limites.maxAdministrativas}
               filasPendientes={filasPendientes}
               onCambio={setAdmin}
               onQuitar={(x) =>
@@ -742,9 +982,7 @@ export default function FormularioDocente({
                 )
               }
             />
-            {!soloLectura && <div className="mt-6 -mx-5 -mb-5 flex justify-end rounded-b-xl bg-cecar-50/60 px-5 py-3">
-              {accionGuardar("Guardar actividades", "actividades")}
-            </div>}
+            {!soloLectura && pieGuardar("Guardar actividades", "actividades")}
           </Seccion>
           </div>
         </div>
@@ -766,24 +1004,34 @@ export default function FormularioDocente({
         >
           <div className="grid gap-4 sm:grid-cols-3">
             {APOYO.map(({ clave, etiqueta }) => (
-              <Campo
+              <div
                 key={clave}
-                etiqueta={etiqueta}
-                ayuda={
-                  regla && docente[clave] !== regla[clave]
-                    ? `Institucional: ${regla[clave]} h`
-                    : undefined
-                }
+                className="rounded-xl border border-[var(--color-borde)] bg-[var(--color-superficie)]/50 p-4"
               >
-                <Entrada
-                  type="number"
-                  min={0}
-                  value={docente[clave]}
-                  onChange={(e) => set(clave, Number(e.target.value) || 0)}
+                <p className="etiqueta">{etiqueta}</p>
+                <Contador
+                  etiqueta={etiqueta}
+                  valor={docente[clave]}
+                  max={40}
+                  onCambio={(v) => set(clave, v)}
                 />
-              </Campo>
+                {regla && (
+                  <p
+                    className={`mt-2 text-[11px] ${
+                      docente[clave] !== regla[clave] ? "text-amber-700" : "text-[var(--color-texto-suave)]"
+                    }`}
+                  >
+                    Institucional: {regla[clave]} h{docente[clave] !== regla[clave] && " · ajustado"}
+                  </p>
+                )}
+              </div>
             ))}
           </div>
+          <p className="mt-3 text-sm text-[var(--color-texto-suave)]">
+            Total de apoyo académico:{" "}
+            <strong className="text-[var(--color-texto)]">{totales.apoyoAcademico} h</strong>
+            {regla && ` · institucional ${regla.preparacion + regla.atencion + regla.comunidades} h`}
+          </p>
 
           <Campo etiqueta="Observaciones" className="mt-4">
             <textarea
@@ -794,9 +1042,7 @@ export default function FormularioDocente({
               placeholder="Anotaciones sobre la asignación de este docente"
             />
           </Campo>
-          {!soloLectura && <div className="mt-6 -mx-5 -mb-5 flex justify-end rounded-b-xl bg-cecar-50/60 px-5 py-3">
-            {accionGuardar("Guardar apoyo académico", "apoyo")}
-          </div>}
+          {!soloLectura && pieGuardar("Guardar apoyo académico", "apoyo")}
         </Seccion>
         </div>
 
@@ -817,86 +1063,103 @@ function ListaActividades<T extends { id: string; rolId: number | null; horas: n
   filasPendientes,
   onCambio,
   onQuitar,
+  onAgregar,
+  etiquetaAgregar,
+  maximo,
 }: {
   items: T[];
   prefijo: string;
   vacio: string;
   /** Roles vigentes, que el administrador puede haber parametrizado. */
   roles: RolDescarga[];
-  opcionesRol: { valor: string; texto: string }[];
+  opcionesRol: OpcionBuscable[];
   filasPendientes: Set<string>;
   onCambio: (id: string, cambios: Partial<T>) => void;
   onQuitar: (item: T) => void;
+  /** Sin él (solo lectura) no se ofrece agregar. */
+  onAgregar?: () => void;
+  etiquetaAgregar: string;
+  maximo: number;
 }) {
   if (items.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-[var(--color-borde)] px-4 py-6 text-center text-sm text-[var(--color-texto-suave)]">
-        {vacio}
-      </p>
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[var(--color-borde)] px-4 py-8 text-center">
+        <p className="text-sm text-[var(--color-texto-suave)]">{vacio}</p>
+        {onAgregar && (
+          <Boton variante="secundario" onClick={onAgregar}>
+            <FiPlus aria-hidden /> {etiquetaAgregar}
+          </Boton>
+        )}
+      </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {items.map((x, i) => {
         const rol = roles.find((r) => r.id === x.rolId);
         const filaPendiente = filasPendientes.has(x.id);
         const tono =
           rol?.tipo === "INVESTIGACION" ? "azul" : rol?.tipo === "EXTENSION" ? "ambar" : "verde";
+        const nombreFila = `${prefijo}${i + 1}`;
         return (
+          // Compacta (SPEC-020): son a lo sumo tres y con el total al pie se
+          // leen de un vistazo. La insignia y quitar van arriba para que el
+          // rol tenga casi todo el ancho: sus nombres llegan a 96 caracteres.
           <div
             key={x.id}
-            className="rounded-xl border border-[var(--color-borde)] bg-[var(--color-superficie)]/50 p-4"
+            className={`rounded-xl border bg-[var(--color-superficie)]/50 p-3 sm:px-4 ${
+              filaPendiente ? "border-rose-300" : "border-[var(--color-borde)]"
+            }`}
           >
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Insignia>
-                  {prefijo}
-                  {i + 1}
-                </Insignia>
-                {rol && <Insignia tono={tono}>{ETIQUETA_TIPO[rol.tipo]}</Insignia>}
-              </div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <Insignia tono={rol ? tono : "neutro"}>
+                {nombreFila}
+                {rol && ` · ${ETIQUETA_TIPO[rol.tipo]}`}
+              </Insignia>
               <Boton
                 variante="peligro"
                 className="shrink-0 px-2 py-1 text-xs"
+                title={`Quitar ${nombreFila}`}
+                aria-label={`Quitar ${nombreFila}`}
                 onClick={() => onQuitar(x)}
               >
                 <FiTrash2 aria-hidden /> Quitar
               </Boton>
             </div>
 
-            {/* El rol ocupa su propia fila: sus nombres llegan a 96 caracteres. */}
-            <div className="space-y-3">
-              <Campo etiqueta="Rol">
-                <Seleccion
-                  className="w-full"
-                  opciones={opcionesRol}
-                  value={x.rolId === null ? "" : String(x.rolId)}
-                  error={filaPendiente}
-                  title={rol?.nombre}
-                  onChange={(e) =>
-                    onCambio(x.id, {
-                      rolId: e.target.value === "" ? null : Number(e.target.value),
-                    } as Partial<T>)
-                  }
-                />
-              </Campo>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <SelectorBuscable
+                id={`rol-${x.id}`}
+                opciones={opcionesRol}
+                valor={x.rolId === null ? "" : String(x.rolId)}
+                error={filaPendiente && x.rolId === null}
+                placeholder="Busque el rol: p. ej. «coordinador investigación»"
+                onCambio={(v) => onCambio(x.id, { rolId: v === "" ? null : Number(v) } as Partial<T>)}
+              />
+            </div>
 
-              <Campo etiqueta="Horas semanales" className="max-w-[10rem]">
-                <Entrada
-                  type="number"
-                  min={0}
-                  max={20}
-                  value={x.horas || ""}
-                  error={filaPendiente}
-                  onChange={(e) => onCambio(x.id, { horas: Number(e.target.value) || 0 } as Partial<T>)}
-                  placeholder="0"
-                />
-              </Campo>
+            <Contador
+              etiqueta={`horas de ${nombreFila}`}
+              valor={x.horas || 0}
+              max={20}
+              error={filaPendiente && x.horas <= 0}
+              onCambio={(v) => onCambio(x.id, { horas: v } as Partial<T>)}
+            />
             </div>
           </div>
         );
       })}
+      {onAgregar && items.length < maximo && (
+        <button
+          type="button"
+          onClick={onAgregar}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-cecar-200 py-2.5 text-sm font-medium text-cecar-700 transition hover:border-cecar-300 hover:bg-cecar-50"
+        >
+          <FiPlus aria-hidden /> {etiquetaAgregar}
+        </button>
+      )}
     </div>
   );
 }

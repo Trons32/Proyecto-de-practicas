@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Boton, Campo, Entrada } from "@/components/ui";
 import { FiLock } from "@/components/iconos";
-import { inicioDeRol, type Usuario } from "@/lib/auth/sesion";
+import { inicioDeRol } from "@/lib/auth/sesion";
+import { leerSesion } from "@/lib/auth/cliente";
 import { recargarDatos } from "@/lib/datos/recargar";
 import { useSesionStore } from "@/lib/stores/sesion-store";
 
@@ -30,13 +31,17 @@ export default function CambiarClave() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clave }),
       });
-      const datos = await respuesta.json().catch(() => ({})) as { mensaje?: string; usuario?: Usuario };
-      if (!respuesta.ok || !datos.usuario) {
+      const datos = await respuesta.json().catch(() => ({})) as { mensaje?: string };
+      if (!respuesta.ok) {
         throw new Error(datos.mensaje ?? "No fue posible actualizar la contraseña.");
       }
-      actualizarUsuario(datos.usuario);
+      // Consultar la sesión la pone al día: con la clave temporal pendiente,
+      // el token vuelve a leer la base en cada consulta (SPEC-018).
+      const usuario = await leerSesion();
+      if (!usuario) throw new Error("Su sesión venció. Ingrese con la nueva contraseña.");
+      actualizarUsuario(usuario);
       await recargarDatos();
-      router.replace(inicioDeRol(datos.usuario.rol));
+      router.replace(inicioDeRol(usuario.rol));
     } catch (causa) {
       setError((causa as Error).message);
     } finally {

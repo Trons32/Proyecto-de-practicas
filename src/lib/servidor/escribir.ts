@@ -10,7 +10,7 @@ import { Prisma } from "@/generated/prisma/client";
 import type { ReglaDedicacion } from "../catalogos";
 import type { Convocatoria } from "../convocatoria";
 import type { Limites, Novedad, RolParametro } from "../novedades";
-import type { Asignacion } from "../tipos";
+import { esImportada, type Asignacion } from "../tipos";
 import { bd, type Cliente } from "./bd";
 import { revisarBorrado, revisarGuardado, type Actor } from "../transiciones";
 import { aUuid } from "./ids";
@@ -70,7 +70,7 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
     );
 
     for (const idBorrado of borrados) {
-      const problema = revisarBorrado(guardadas.get(aUuid(idBorrado)));
+      const problema = revisarBorrado(guardadas.get(aUuid(idBorrado)), actor);
       if (problema) throw new CambioRechazado(problema);
       await tx.asignacion.delete({ where: { id: aUuid(idBorrado) } });
     }
@@ -102,6 +102,9 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
       await tx.docente_asignado.deleteMany({ where: { asignacion_id: asigId } });
 
       const enlazados = new Set<string>();
+      // Un Excel de 2022 no debe renombrar a la persona: su nombre vigente
+      // es el de lo más reciente, no el de lo que se importa.
+      const importada = esImportada(a);
       for (const [i, d] of a.docentes.entries()) {
         const doc = d.documento.trim();
         let personaId: string | null = null;
@@ -119,7 +122,7 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
           const nombres = d.nombres.trim() || "—";
           const persona = await tx.docente.upsert({
             where: { documento: doc },
-            update: { nombres },
+            update: importada ? {} : { nombres },
             create: { documento: doc, nombres },
             select: { id: true },
           });

@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
 import { useSesionStore } from "@/lib/stores/sesion-store";
-import { resumirAsignacion, legible } from "@/lib/resumen";
+import { resumirAsignacion, legible, nombreFacultad } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import { usePlazo } from "@/lib/usar-plazo";
-import { esEditable } from "@/lib/tipos";
+import { esEditable, esImportada } from "@/lib/tipos";
 import Encabezado from "@/components/Encabezado";
 import ModalConfirmacion from "@/components/ModalConfirmacion";
 import AvisoPlazo from "@/components/AvisoPlazo";
@@ -173,7 +173,7 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
         titulo={legible(asignacion.programa) || "Programa sin definir"}
         descripcion={
           <>
-            {legible(asignacion.facultad)} · Periodo{" "}
+            {nombreFacultad(asignacion.facultad)} · Periodo{" "}
             <strong className="text-[var(--color-texto)]">{asignacion.periodo}</strong>
           </>
         }
@@ -186,7 +186,7 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
           </Link>
         }
       >
-        <InsigniaEstado estado={asignacion.estado} />
+        <InsigniaEstado estado={asignacion.estado} importada={esImportada(asignacion)} />
         {asignacion.version > 0 && <Insignia>v{asignacion.version}</Insignia>}
         <Boton
           variante="secundario"

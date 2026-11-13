@@ -12,6 +12,7 @@
  */
 
 import { resumirAsignacion } from "./resumen";
+import { esImportada } from "./tipos";
 import { CONFIG_OFICIAL, type Configuracion } from "./calculo";
 import type { Asignacion } from "./tipos";
 
@@ -50,7 +51,9 @@ export function asignacionesAfectadas(
   const afectadas: AsignacionAfectada[] = [];
 
   for (const a of asignaciones) {
-    if (a.estado !== "aprobada") continue;
+    // Una importada es el expediente de un periodo cerrado (SPEC-017): se
+    // calculó con las reglas de entonces y no hay a quién pedirle corrección.
+    if (a.estado !== "aprobada" || esImportada(a)) continue;
 
     const ahora = resumirAsignacion(a, config);
     if (ahora.totalErrores === 0) continue;

@@ -1,98 +1,104 @@
 "use client";
 
 import { create } from "zustand";
-import {
-  cerrarEnServidor,
-  CLAVE_SESION,
-  DURACION_SESION_MS,
-  type Sesion,
-  type Usuario,
-  type Rol,
-} from "@/lib/auth/sesion";
+import type { Rol, Sesion, Usuario } from "@/lib/auth/sesion";
+import { cerrarEnServidor, leerSesion, RENOVAR_CADA_MS } from "@/lib/auth/cliente";
 
 interface SesionStore {
   sesion: Sesion | null;
-  /** Ya se intentó leer la sesión guardada; antes de esto no se sabe nada. */
+  /** Ya se preguntó al servidor si hay sesión; antes de esto no se sabe nada. */
   hidratado: boolean;
+  /**
+   * La cookie venció con la aplicación abierta. La sesión se conserva en
+   * memoria para no perder la página ni lo que falta por guardar: el modal de
+   * reingreso pide la clave y, al entrar, se reintenta (SPEC-018, CA-018.3).
+   */
+  vencida: boolean;
 
-  iniciar: (usuario: Usuario, recordarme: boolean) => void;
-  /** Refresca los datos firmados tras cambiar la contraseña obligatoria. */
+  iniciar: (usuario: Usuario) => void;
+  /** Refresca los datos del usuario, p. ej. tras cambiar la clave temporal. */
   actualizarUsuario: (usuario: Usuario) => void;
   cerrar: () => void;
-  /** Lee la sesión guardada y descarta la que haya expirado. */
-  restaurar: () => void;
+  /** Pregunta al servidor por la sesión de la cookie. */
+  restaurar: () => Promise<void>;
+  marcarVencida: () => void;
+  /** Vuelve a la sesión tras el reingreso, sin salir de la página. */
+  reanudar: (usuario: Usuario) => void;
+  /**
+   * Renueva la cookie si pasó `RENOVAR_CADA_MS` desde la última vez. Se
+   * llama con la actividad del usuario: así la sesión vence por inactividad
+   * y no a una hora fija del login.
+   */
+  renovar: () => void;
 }
 
 /**
- * "Recordarme" decide el almacenamiento: localStorage sobrevive al cierre
- * del navegador, sessionStorage no. Por eso la persistencia se maneja a
- * mano en vez de con el middleware `persist`, que fija un solo destino.
+ * La sesión ya no se guarda en localStorage ni en sessionStorage, ni lleva
+ * vencimiento propio (SPEC-018): la cookie de NextAuth es la única verdad.
+ * Antes había dos relojes de una hora, el del navegador y el de la cookie,
+ * y vencían en momentos distintos.
  */
-const guardar = (sesion: Sesion, recordarme: boolean) => {
-  try {
-    const json = JSON.stringify(sesion);
-    localStorage.removeItem(CLAVE_SESION);
-    sessionStorage.removeItem(CLAVE_SESION);
-    (recordarme ? localStorage : sessionStorage).setItem(CLAVE_SESION, json);
-  } catch {
-    // Modo privado o almacenamiento bloqueado: la sesión vive en memoria.
-  }
-};
+let restaurando: Promise<void> | null = null;
+let ultimaRenovacion = 0;
 
-const borrar = () => {
-  try {
-    localStorage.removeItem(CLAVE_SESION);
-    sessionStorage.removeItem(CLAVE_SESION);
-  } catch {
-    /* nada que limpiar */
-  }
-};
-
-const leer = (): Sesion | null => {
-  try {
-    const json =
-      localStorage.getItem(CLAVE_SESION) ?? sessionStorage.getItem(CLAVE_SESION);
-    if (!json) return null;
-    const s = JSON.parse(json) as Sesion;
-    if (!s?.usuario || Date.now() >= Number(s.expiracion ?? 0)) {
-      borrar();
-      return null;
-    }
-    return s;
-  } catch {
-    return null;
-  }
-};
-
-export const useSesionStore = create<SesionStore>()((set) => ({
+export const useSesionStore = create<SesionStore>()((set, get) => ({
   sesion: null,
   hidratado: false,
+  vencida: false,
 
-  iniciar: (usuario, recordarme) => {
-    const sesion: Sesion = { usuario, expiracion: Date.now() + DURACION_SESION_MS };
-    guardar(sesion, recordarme);
-    set({ sesion, hidratado: true });
+  iniciar: (usuario) => {
+    ultimaRenovacion = Date.now();
+    set({ sesion: { usuario }, hidratado: true, vencida: false });
   },
 
-  actualizarUsuario: (usuario) => set((estado) => {
-    if (!estado.sesion) return estado;
-    const sesion = { ...estado.sesion, usuario };
-    try {
-      const destino = localStorage.getItem(CLAVE_SESION) !== null ? localStorage : sessionStorage;
-      destino.setItem(CLAVE_SESION, JSON.stringify(sesion));
-    } catch {
-      // Sin storage la sesión sigue viva en memoria hasta que venza.
-    }
-    return { sesion };
-  }),
+  actualizarUsuario: (usuario) =>
+    set((estado) => (estado.sesion ? { sesion: { ...estado.sesion, usuario } } : estado)),
 
   cerrar: () => {
-    borrar();
     cerrarEnServidor();
-    set({ sesion: null, hidratado: true });
+    set({ sesion: null, hidratado: true, vencida: false });
   },
 
-  restaurar: () => set({ sesion: leer(), hidratado: true }),
+  restaurar: () => {
+    restaurando ??= leerSesion()
+      .then((usuario) => {
+        ultimaRenovacion = Date.now();
+        set({ sesion: usuario ? { usuario } : null, hidratado: true, vencida: false });
+      })
+      // Sin servidor no se sabe si hay sesión: se trata como si no la hubiera
+      // y GuardiaSesion lleva al login, que dirá si hay conexión.
+      .catch(() => set({ sesion: null, hidratado: true }))
+      .finally(() => {
+        restaurando = null;
+      });
+    return restaurando;
+  },
+
+  marcarVencida: () => {
+    if (get().sesion) set({ vencida: true });
+  },
+
+  reanudar: (usuario) => {
+    ultimaRenovacion = Date.now();
+    set({ sesion: { usuario }, vencida: false });
+  },
+
+  renovar: () => {
+    const { sesion, vencida } = get();
+    if (!sesion || vencida || Date.now() - ultimaRenovacion < RENOVAR_CADA_MS) return;
+    ultimaRenovacion = Date.now();
+    leerSesion()
+      .then((usuario) => {
+        if (!usuario) get().marcarVencida();
+        // El administrador pudo cambiarle el rol o el nombre entre tanto.
+        else if (JSON.stringify(usuario) !== JSON.stringify(get().sesion?.usuario)) get().actualizarUsuario(usuario);
+      })
+      // Un corte de red no es una sesión vencida: se reintenta con la
+      // actividad de dentro de medio minuto, no con cada tecla.
+      .catch(() => {
+        ultimaRenovacion = Date.now() - RENOVAR_CADA_MS + 30_000;
+      });
+  },
 }));
 
 /** Rol de la sesión actual, o null si no hay sesión. */

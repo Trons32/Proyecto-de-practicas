@@ -3,6 +3,7 @@ import "./globals.css";
 import DeferredToaster from "@/components/DeferredToaster";
 import Chrome from "@/components/Chrome";
 import GuardiaSesion from "@/components/GuardiaSesion";
+import ReingresoSesion from "@/components/ReingresoSesion";
 
 export const metadata: Metadata = {
   title: "Asignación Académica · CECAR",
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <GuardiaSesion>
           <Chrome>{children}</Chrome>
         </GuardiaSesion>
+        <ReingresoSesion />
         <DeferredToaster />
       </body>
     </html>

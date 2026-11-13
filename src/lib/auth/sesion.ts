@@ -1,9 +1,10 @@
 /**
  * Autenticación y roles.
  *
- * El inicio de sesión se resuelve hoy contra usuarios de prueba: en el
- * navegador sin SQL, en el servidor con SQL. Cuando llegue Aldea, el único
- * punto a cambiar es `verificarCredenciales` de `lib/servidor/sesion.ts`.
+ * Tipos, roles y usuarios de prueba; lo usan el navegador y el servidor.
+ * Quién entra lo decide `verificarCredenciales` de `lib/servidor/sesion.ts`
+ * (ahí entra Aldea); lo que habla con NextAuth desde el navegador está en
+ * `lib/auth/cliente.ts`.
  */
 
 export type Rol = "ADMIN" | "COORDINADOR";
@@ -17,15 +18,21 @@ export interface Usuario {
   debeCambiarClave?: boolean;
 }
 
+/**
+ * Sin vencimiento propio (SPEC-018): el navegador ya no lleva reloj. Si la
+ * sesión sigue viva lo dice la cookie, y solo el servidor la lee.
+ */
 export interface Sesion {
   usuario: Usuario;
-  /** Marca de tiempo (ms) en que la sesión deja de ser válida. */
-  expiracion: number;
 }
 
-export const DURACION_SESION_MS = 60 * 60 * 1000; // 1 hora, como el formato institucional
-
-export const CLAVE_SESION = "cecar-asignacion-sesion";
+/**
+ * Cookie que dice si el usuario marcó "Recordarme". La pone el navegador al
+ * iniciar sesión y la lee la ruta de NextAuth. No es secreta: alterarla solo
+ * cambia si la cookie de sesión del propio usuario sobrevive al cierre del
+ * navegador.
+ */
+export const COOKIE_RECORDARME = "cecar-recordarme";
 
 export const ETIQUETA_ROL: Record<Rol, string> = {
   ADMIN: "Administrador",
@@ -50,15 +57,9 @@ const USUARIOS: (Usuario & { clave: string })[] = [
   },
 ];
 
-export interface ResultadoAuth {
-  ok: boolean;
-  usuario?: Usuario;
-  mensaje?: string;
-}
-
 /**
- * Busca entre los usuarios de prueba. La usan `autenticar` en modo local y
- * `verificarCredenciales` del servidor hasta que llegue Aldea.
+ * Busca entre los usuarios de prueba. La usa `verificarCredenciales` del
+ * servidor con `AUTH_PROVEEDOR=prueba`.
  */
 export function buscarUsuarioDePrueba(email: string, clave: string): Usuario | null {
   const encontrado = USUARIOS.find(
@@ -67,30 +68,6 @@ export function buscarUsuarioDePrueba(email: string, clave: string): Usuario | n
   if (!encontrado) return null;
   // La clave no sale de aquí: solo se devuelven los datos del usuario.
   return { id: encontrado.id, nombres: encontrado.nombres, email: encontrado.email, rol: encontrado.rol };
-}
-
-/**
- * Valida las credenciales en el servidor (SPEC-008), que deja una cookie
- * firmada: sin ella la API no responde. `recordarme` decide si esa cookie
- * sobrevive al cierre del navegador.
- */
-export async function autenticar(email: string, clave: string, recordarme = false): Promise<ResultadoAuth> {
-  try {
-    const r = await fetch("/api/sesion", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, clave, recordarme }),
-    });
-    const cuerpo = await r.json().catch(() => ({}));
-    return r.ok ? { ok: true, usuario: cuerpo.usuario } : { ok: false, mensaje: cuerpo.mensaje ?? "Credenciales incorrectas." };
-  } catch {
-    return { ok: false, mensaje: "No hay conexión con el servidor." };
-  }
-}
-
-/** Borra la cookie del servidor. */
-export function cerrarEnServidor(): void {
-  void fetch("/api/sesion", { method: "DELETE" }).catch(() => {});
 }
 
 /** Dónde aterriza cada rol tras iniciar sesión. */

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAsignacionStore, type Autor } from "@/lib/stores/asignacion-store";
 import { useConfigStore } from "@/lib/stores/config-store";
 import { useSesionStore } from "@/lib/stores/sesion-store";
-import { resumirAsignacion, legible, desde } from "@/lib/resumen";
+import { resumirAsignacion, legible, desde, nombreFacultad } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import {
   estadoConvocatoria,
@@ -14,7 +14,7 @@ import {
   comoFechaInput,
   finDelDia,
 } from "@/lib/convocatoria";
-import { periodosAsignables, type Asignacion, type EstadoAsignacion } from "@/lib/tipos";
+import { esImportada, periodosAsignables, type Asignacion, type EstadoAsignacion } from "@/lib/tipos";
 import Encabezado from "@/components/Encabezado";
 import Modal from "@/components/Modal";
 import ModalConfirmacion from "@/components/ModalConfirmacion";
@@ -191,13 +191,13 @@ export default function AdminAsignaciones() {
                       {legible(a.programa) || "Programa sin definir"}
                     </Link>
                     <p className="mt-0.5 truncate text-xs text-[var(--color-texto-suave)]">
-                      {legible(a.facultad) || "Facultad sin definir"} · {desde(a.actualizada)}
+                      {nombreFacultad(a.facultad) || "Facultad sin definir"} · {desde(a.actualizada)}
                     </p>
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
                     <Insignia>{a.periodo}</Insignia>
-                    <InsigniaEstado estado={a.estado} />
+                    <InsigniaEstado estado={a.estado} importada={esImportada(a)} />
                     {a.version > 0 && <Insignia>v{a.version}</Insignia>}
                     {r.totalErrores > 0 && (
                       <Insignia tono="rojo">{r.totalErrores} pendientes</Insignia>

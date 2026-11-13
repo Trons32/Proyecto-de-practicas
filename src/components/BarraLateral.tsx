@@ -15,6 +15,7 @@ import {
   FiBell,
   FiEye,
   FiDatabase,
+  FiBookOpen,
 } from "./iconos";
 import type { IconType } from "react-icons";
 import { useSesionStore } from "@/lib/stores/sesion-store";
@@ -43,6 +44,7 @@ const MENU: Record<Rol, Enlace[]> = {
     { icono: FiGrid, texto: "Inicio", href: "/" },
     { icono: FiFileText, texto: "Asignaciones", href: "/asignacion" },
     { icono: FiUsers, texto: "Docentes" },
+    { icono: FiBookOpen, texto: "Criterios", href: "/criterios" },
     { icono: FiBarChart2, texto: "Reportes" },
   ],
   ADMIN: [
@@ -59,6 +61,7 @@ const MENU: Record<Rol, Enlace[]> = {
     { icono: FiDatabase, texto: "Respaldo", href: "/admin/datos" },
     { icono: FiBarChart2, texto: "Reportes", href: "/admin/reportes" },
     { icono: FiUsers, texto: "Usuarios", href: "/admin/usuarios" },
+    { icono: FiBookOpen, texto: "Criterios", href: "/criterios" },
   ],
 };
 

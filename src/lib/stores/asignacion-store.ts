@@ -13,6 +13,7 @@ import {
   aplicarReglaDedicacion,
   cursosBase,
   esEditable,
+  esImportada,
 } from "@/lib/tipos";
 
 /** Quién ejecuta la acción; se graba en la bitácora tal cual. */
@@ -240,7 +241,7 @@ export const useAsignacionStore = create<AsignacionStore>()(
         reabrirPorParametros: (id, autor, nota, plazo) => {
           const a = get().asignaciones.find((x) => x.id === id);
           // Solo lo ya aprobado se reabre: lo demás sigue su curso normal.
-          if (!a || a.estado !== "aprobada") return;
+          if (!a || a.estado !== "aprobada" || esImportada(a)) return;
           registrar(
             id,
             "en_correccion",
@@ -265,7 +266,7 @@ export const useAsignacionStore = create<AsignacionStore>()(
           // N renders y dejarían estados intermedios visibles.
           set((s) => ({
             asignaciones: s.asignaciones.map((a) => {
-              if (!objetivo.has(a.id) || a.estado !== "aprobada") return a;
+              if (!objetivo.has(a.id) || a.estado !== "aprobada" || esImportada(a)) return a;
               reabiertas++;
               return {
                 ...a,

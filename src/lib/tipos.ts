@@ -102,7 +102,12 @@ export type TipoEvento =
   | "aprobada"
   | "devuelta"
   | "reabierta_por_parametros"
-  | "reenviada";
+  | "reenviada"
+  /**
+   * Cargada desde el Excel de un periodo anterior al sistema (SPEC-017). Es
+   * el único evento de esa asignación: nace aprobada y nunca se reabre.
+   */
+  | "importada";
 
 export interface Evento {
   id: string;
@@ -124,6 +129,13 @@ export interface Evento {
    */
   novedadId?: string;
 }
+
+/**
+ * ¿Vino de un Excel de un periodo anterior (SPEC-017)? Se deduce de la
+ * bitácora y no de un campo propio: así la forma de `Asignacion` —y la
+ * persistida— no cambia, y nadie puede marcarla sin dejar el evento.
+ */
+export const esImportada = (a: Pick<Asignacion, "bitacora">): boolean => a.bitacora[0]?.tipo === "importada";
 
 export interface Asignacion {
   id: string;
@@ -209,6 +221,9 @@ const uid = (): string => {
   const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 };
+
+/** Un id nuevo, del mismo formato que los de la base. */
+export const nuevoId = (): string => uid();
 
 export const nuevaDescarga = (): Descarga => ({ id: uid(), rolId: null, horas: 0 });
 export const nuevaAdministrativa = (): Administrativa => ({ id: uid(), rolId: null, horas: 0 });

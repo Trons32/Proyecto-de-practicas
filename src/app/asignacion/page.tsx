@@ -8,10 +8,11 @@ import {
   separarEnProgreso,
   desde,
   legible,
+  nombreFacultad,
   type ResumenAsignacion,
 } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
-import type { Asignacion } from "@/lib/tipos";
+import { esImportada, type Asignacion } from "@/lib/tipos";
 import Encabezado from "@/components/Encabezado";
 import { Boton, Insignia, InsigniaEstado, Paginacion } from "@/components/ui";
 import { FiPlus, FiFileText, FiEdit3, FiArrowRight } from "@/components/iconos";
@@ -156,13 +157,13 @@ function EnCurso({ fila: { a, r } }: { fila: Fila }) {
               {legible(a.programa) || "Programa sin definir"}
             </h3>
             <p className="mt-0.5 truncate text-xs text-[var(--color-texto-suave)]">
-              {legible(a.facultad) || "Facultad sin definir"} · editada {desde(a.actualizada)}
+              {nombreFacultad(a.facultad) || "Facultad sin definir"} · editada {desde(a.actualizada)}
             </p>
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Insignia tono="verde">Periodo {a.periodo}</Insignia>
-            <InsigniaEstado estado={a.estado} />
+            <InsigniaEstado estado={a.estado} importada={esImportada(a)} />
             {r.totalErrores > 0 && <Insignia tono="rojo">{r.totalErrores} pendientes</Insignia>}
           </div>
         </div>
@@ -195,12 +196,12 @@ function FilaHistorico({ fila: { a, r } }: { fila: Fila }) {
             {legible(a.programa) || "Programa sin definir"}
           </span>
           <span className="mt-0.5 block truncate text-xs text-[var(--color-texto-suave)]">
-            {legible(a.facultad) || "Facultad sin definir"} · editada {desde(a.actualizada)}
+            {nombreFacultad(a.facultad) || "Facultad sin definir"} · editada {desde(a.actualizada)}
           </span>
         </span>
         <span className="flex shrink-0 flex-wrap items-center gap-2">
           <Insignia>{a.periodo}</Insignia>
-          <InsigniaEstado estado={a.estado} />
+          <InsigniaEstado estado={a.estado} importada={esImportada(a)} />
           {r.totalErrores > 0 && <Insignia tono="rojo">{r.totalErrores} pendientes</Insignia>}
           <span className="text-xs tabular-nums text-[var(--color-texto-suave)]">
             {r.totalDocentes} doc · {r.horasTotales} h

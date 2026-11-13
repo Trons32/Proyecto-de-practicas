@@ -4,8 +4,9 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
 import { useSesionStore } from "@/lib/stores/sesion-store";
-import { resumirAsignacion, separarEnProgreso, desde, legible } from "@/lib/resumen";
+import { resumirAsignacion, separarEnProgreso, desde, legible, nombreFacultad } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
+import { esImportada } from "@/lib/tipos";
 import Encabezado from "@/components/Encabezado";
 import { Boton, TarjetaStat, Insignia, InsigniaEstado } from "@/components/ui";
 import {
@@ -113,7 +114,7 @@ export default function Inicio() {
                 {legible(enProgreso.a.programa) || "Programa sin definir"}
               </p>
               <p className="mt-0.5 text-sm text-[var(--color-texto-suave)]">
-                {legible(enProgreso.a.facultad) || "Facultad sin definir"}
+                {nombreFacultad(enProgreso.a.facultad) || "Facultad sin definir"}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Insignia tono="verde">Periodo {enProgreso.a.periodo}</Insignia>
@@ -210,12 +211,12 @@ export default function Inicio() {
                       {legible(a.programa) || "Programa sin definir"}
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-[var(--color-texto-suave)]">
-                      {legible(a.facultad) || "Facultad sin definir"} · editada {desde(a.actualizada)}
+                      {nombreFacultad(a.facultad) || "Facultad sin definir"} · editada {desde(a.actualizada)}
                     </span>
                   </span>
                   <span className="flex shrink-0 flex-wrap items-center gap-2">
                     <Insignia>{a.periodo}</Insignia>
-                    <InsigniaEstado estado={a.estado} />
+                    <InsigniaEstado estado={a.estado} importada={esImportada(a)} />
                     <span className="text-xs tabular-nums text-[var(--color-texto-suave)]">
                       {r.totalDocentes} doc · {r.horasTotales} h
                     </span>

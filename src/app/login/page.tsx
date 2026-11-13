@@ -4,7 +4,8 @@ import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useSesionStore } from "@/lib/stores/sesion-store";
-import { autenticar, inicioDeRol } from "@/lib/auth/sesion";
+import { inicioDeRol } from "@/lib/auth/sesion";
+import { autenticar } from "@/lib/auth/cliente";
 import { recargarDatos } from "@/lib/datos/recargar";
 import { FiMail, FiLock, FiEye, FiEyeOff, FiAlertCircle } from "@/components/iconos";
 
@@ -32,7 +33,7 @@ export default function Login() {
       return;
     }
 
-    iniciar(r.usuario, recordarme);
+    iniciar(r.usuario);
     // Lo que se intentó cargar antes del login fue rechazado (401).
     await recargarDatos();
     router.replace(r.usuario.debeCambiarClave ? "/cambiar-clave" : inicioDeRol(r.usuario.rol));

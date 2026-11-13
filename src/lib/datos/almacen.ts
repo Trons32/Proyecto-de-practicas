@@ -5,8 +5,8 @@
  * lo que exige una carga remota. No hay copia en localStorage: dos
  * navegadores con datos distintos es lo que se quiso eliminar.
  *
- * La sesión queda fuera a propósito: "Recordarme" elige entre dos destinos y
- * `sesion-store.ts` lo maneja a mano (ver AGENTS.md).
+ * La sesión queda fuera a propósito: vive en la cookie de NextAuth y
+ * `sesion-store.ts` solo la consulta (SPEC-018).
  */
 
 import type { PersistStorage, StorageValue } from "zustand/middleware";
@@ -85,11 +85,10 @@ const almacenRemoto: PersistStorage<unknown> = {
       // iniciar sesión, `recargarDatos` vuelve a pedirlo.
       if (r.status === 401) {
         // Si el navegador cree tener sesión pero la cookie ya no vale, se
-        // vería la aplicación vacía sin explicación: mejor volver al login.
+        // vería la aplicación vacía sin explicación: se pide la clave, y al
+        // entrar `reanudarGuardado` vuelve a leer esta clave.
         const { useSesionStore } = await import("@/lib/stores/sesion-store");
-        const s = useSesionStore.getState();
-        if (!s.hidratado) s.restaurar();
-        if (useSesionStore.getState().sesion) useSesionStore.getState().cerrar();
+        useSesionStore.getState().marcarVencida();
         return null;
       }
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -121,14 +120,13 @@ const almacenRemoto: PersistStorage<unknown> = {
           body: JSON.stringify(cuerpo),
         });
         if (r.status === 401) {
-          // La cookie venció: lo que no se guardó se pierde al salir, y
-          // seguir trabajando sin poder guardar sería peor.
-          void import("@/lib/toast").then(({ sileo }) =>
-            sileo.warning({ title: "La sesión venció", description: "Inicie sesión de nuevo; el último cambio no se guardó." })
-          );
-          fallos.push("La sesión venció. Inicie sesión de nuevo.");
+          // La cookie venció. El cambio no se recuerda como guardado, así que
+          // sigue pendiente: el modal de reingreso pide la clave y
+          // `reanudarGuardado` lo vuelve a enviar (SPEC-018, CA-018.3).
+          // Antes se cerraba la sesión y el cambio se perdía.
+          fallos.push("La sesión venció. Ingrese de nuevo para guardar.");
           const { useSesionStore } = await import("@/lib/stores/sesion-store");
-          useSesionStore.getState().cerrar();
+          useSesionStore.getState().marcarVencida();
           return;
         }
         if (!r.ok) {
@@ -151,6 +149,9 @@ const almacenRemoto: PersistStorage<unknown> = {
   // Ningún store borra su clave; en la base no hay nada que hacer.
   removeItem: () => {},
 };
+
+/** Si la clave ya se leyó bien de la base y, por tanto, se puede escribir. */
+export const fueLeida = (clave: string) => leidas.has(clave);
 
 /** El almacenamiento que usan los stores con `persist`. */
 export const almacenamiento = <S>(): PersistStorage<S> => almacenRemoto as PersistStorage<S>;

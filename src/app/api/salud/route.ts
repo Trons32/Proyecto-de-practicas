@@ -12,7 +12,8 @@ export async function GET() {
   const estado = {
     autenticacion: proveedorAuth(),
     base: "ok" as "ok" | "error",
-    sesion: (process.env.SESION_SECRETO?.length ?? 0) >= 32 ? "ok" : "falta-secreto",
+    // NextAuth acepta AUTH_SECRET; SESION_SECRETO sigue valiendo (src/auth.ts).
+    sesion: ((process.env.AUTH_SECRET ?? process.env.SESION_SECRETO)?.length ?? 0) >= 32 ? "ok" : "falta-secreto",
   };
   try {
     // Una tabla del esquema y no `SELECT 1`: confirma también que la base

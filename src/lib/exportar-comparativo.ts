@@ -11,6 +11,8 @@
 import type { Worksheet } from "exceljs";
 import { BORDE, cargarExcelJS, encabezado, relleno, titulo } from "./exportar-cuadro";
 import {
+  docentesPorDedicacion,
+  docentesVsEstudiantes,
   ETIQUETA_MODALIDAD,
   MODALIDADES,
   totalDe,
@@ -66,6 +68,7 @@ const diferencia = (a: number | null, b: number | null) => (a === null || b === 
 
 const FUENTE: Record<CuadroComparable["fuente"], string> = {
   sistema: "Sistema",
+  importado: "Importado",
   historico: "Excel",
   vacio: "Sin datos",
 };
@@ -189,6 +192,40 @@ export async function libroComparativo(d: DatosComparativo) {
   wm.getColumn(1).width = 16;
   wm.getColumn(2).width = 36;
   for (let col = 3; col <= anchoM; col++) wm.getColumn(col).width = 11;
+
+  // --- Hoja 4: total docentes por periodo y dedicación (SPEC-016) ---------
+  const conDatos = d.cuadros.filter((c) => c.fuente !== "vacio");
+  const anchoT = 2 + COLUMNAS.length;
+  const wt = libro.addWorksheet("POR PERIODO", { views: [{ state: "frozen", ySplit: 5 }] });
+  cabecera(wt, "COMPARATIVO DOCENTE POR PERIODO ACADÉMICO (PRESENCIAL, EAD Y VIRTUAL)", d.bajada, anchoT);
+  ["PERIODO", ...COLUMNAS.map((c) => c.texto), "FUENTE"].forEach((t, i) => (wt.getCell(5, i + 1).value = t));
+  encabezado(wt, 5, 1, anchoT);
+  fila = 6;
+  for (const c of conDatos) {
+    const v = docentesPorDedicacion(c);
+    rotulo(wt, fila, 1, c.periodo);
+    COLUMNAS.forEach((k, i) => cifra(wt, fila, 2 + i, v[k.clave], k.clave === "total"));
+    rotulo(wt, fila, anchoT, FUENTE[c.fuente]);
+    fila++;
+  }
+  for (let col = 1; col <= anchoT; col++) wt.getColumn(col).width = 12;
+
+  // --- Hoja 5: docentes vs. estudiantes (SPEC-016) -------------------------
+  const we = libro.addWorksheet("DOCENTES VS ESTUDIANTES", { views: [{ state: "frozen", ySplit: 5 }] });
+  cabecera(we, "COMPARATIVO HISTÓRICO DOCENTES VS. ESTUDIANTES", d.bajada, 4);
+  ["PERIODO ACADÉMICO", "No. DE DOCENTES", "No. ESTUDIANTES", "ESTUDIANTES POR DOCENTE"].forEach(
+    (t, i) => (we.getCell(5, i + 1).value = t)
+  );
+  encabezado(we, 5, 1, 4);
+  fila = 6;
+  for (const f of docentesVsEstudiantes(d.cuadros, d.estudiantes)) {
+    rotulo(we, fila, 1, f.periodo);
+    cifra(we, fila, 2, f.docentes);
+    cifra(we, fila, 3, f.estudiantes);
+    cifra(we, fila, 4, f.relacion);
+    fila++;
+  }
+  for (let col = 1; col <= 4; col++) we.getColumn(col).width = 20;
 
   return libro.xlsx.writeBuffer();
 }

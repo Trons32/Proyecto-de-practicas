@@ -69,7 +69,8 @@ y completar, como mínimo:
 | Variable          | Valor                                                          |
 | ----------------- | -------------------------------------------------------------- |
 | `DATABASE_URL`    | `postgresql://app_asignacion:<clave de la app>@<vps>:5432/asignacion_academica` (añadir `?sslmode=no-verify` si la base está en otra máquina con certificado propio) |
-| `SESION_SECRETO`  | `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` |
+| `SESION_SECRETO`  | `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` (también vale con el nombre `AUTH_SECRET`) |
+| `AUTH_PROVEEDOR`  | `local` en el piloto; `api` cuando se conecte Aldea (ver "Del piloto a Aldea") |
 | `AUTH_API_URL`    | el endpoint que entregue sistemas                              |
 | `AUTH_API_TOKEN`  | si la API lo exige                                             |
 
@@ -128,11 +129,34 @@ Debe responder `200` con:
 | Si dice                      | Revisar                                                          |
 | ---------------------------- | ---------------------------------------------------------------- |
 | `"base": "error"`            | `DATABASE_URL`, firewall, `pg_hba.conf`, o que falte el paso 1.2/1.4 (el detalle sale en el log del servidor) |
-| `"sesion": "falta-secreto"`  | `SESION_SECRETO` vacío o de menos de 32 caracteres               |
+| `"sesion": "falta-secreto"`  | `SESION_SECRETO` (o `AUTH_SECRET`) vacío o de menos de 32 caracteres |
 
 Luego, en el navegador: entrar con un administrador y un coordinador de
 `public.usuario`, crear una asignación, cerrar sesión y volver a entrar desde
 otro equipo. Si la asignación sigue ahí, está guardando en la base.
+
+## Del piloto a Aldea (SPEC-018)
+
+La sesión la maneja NextAuth y dura 8 horas **sin actividad**: mientras el
+coordinador trabaje no se cierra. Al desplegar esta versión por primera vez,
+todos tienen que volver a iniciar sesión una vez (cambió la cookie): hacerlo
+fuera del horario de trabajo o avisar antes.
+
+- **Piloto:** `AUTH_PROVEEDOR=local`. El administrador crea cada cuenta en
+  `/admin/usuarios`; el sistema le muestra la clave temporal para entregarla (copiar, WhatsApp
+  o correo) y el coordinador la cambia en el
+  primer ingreso.
+- **Con Aldea:** completar `AUTH_API_*`, poner `AUTH_PROVEEDOR=api` y
+  reiniciar. Los usuarios del piloto siguen siendo los mismos y entran con
+  su clave de Aldea; las cuentas nuevas se crean sin clave. Comprobar con
+  `npx tsx src/lib/servidor/verificar-sesion.ts` y entrando con un
+  coordinador real.
+- **Volver atrás:** `AUTH_PROVEEDOR=local` y reiniciar. Las claves locales
+  del piloto vuelven a funcionar.
+
+`npm ci` instala `next-auth` con un `override` de `nodemailer` en
+`package.json`: NextAuth lo declara opcional para un proveedor que no se usa.
+No hace falta `--legacy-peer-deps`.
 
 ## Ensayo sin la API
 

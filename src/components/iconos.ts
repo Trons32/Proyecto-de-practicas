@@ -44,4 +44,13 @@ export {
   FiDatabase,
   FiDownload,
   FiUpload,
+  FiCopy,
+  FiCheck,
+  FiKey,
+  FiSend,
+  FiMinus,
 } from "react-icons/fi";
+
+// Feather no trae logos de marca. El de WhatsApp es la excepción: en el botón
+// de compartir, el logo se reconoce antes que cualquier icono genérico.
+export { FaWhatsapp } from "react-icons/fa";

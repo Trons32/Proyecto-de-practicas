@@ -2,8 +2,8 @@
  * usuarios y hashes son datos sensibles y solo se consultan desde el servidor. */
 import { bd } from "@/lib/servidor/bd";
 import { claveTemporal, esCorreoInstitucional, hashDeClave, normalizarCorreo } from "@/lib/servidor/credenciales";
-import { entregarCredenciales } from "@/lib/servidor/correo";
-import { usuarioActual } from "@/lib/servidor/sesion";
+import { avisarAcceso, smtpConfigurado } from "@/lib/servidor/correo";
+import { proveedorAuth, usuarioActual } from "@/lib/servidor/sesion";
 
 const error = (status: number, mensaje: string) => Response.json({ mensaje }, { status });
 
@@ -21,7 +21,7 @@ export async function GET() {
     }),
     bd().programa.findMany({ select: { id: true, nombre: true }, orderBy: { nombre: "asc" } }),
   ]);
-  return Response.json({ usuarios: usuarios.map((u) => ({ ...u, programa: u.programa?.nombre ?? null })), programas });
+  return Response.json({ usuarios: usuarios.map((u) => ({ ...u, programa: u.programa?.nombre ?? null })), programas, proveedor: proveedorAuth(), smtp: smtpConfigurado() });
 }
 
 export async function POST(req: Request) {
@@ -36,36 +36,73 @@ export async function POST(req: Request) {
   if (!rol) return error(400, "Seleccione el rol del usuario.");
   if (rol === "COORDINADOR" && !programaId) return error(400, "Seleccione el programa del coordinador.");
   if (programaId && !(await bd().programa.findUnique({ where: { id: programaId }, select: { id: true } }))) return error(400, "El programa seleccionado no existe.");
+  if (proveedorAuth() === "api") return crearConAldea({ email, nombres, rol, programaId });
   const clave = claveTemporal();
   let creado: { id: string };
   try {
-    creado = await bd().usuario.create({ data: { email, nombres, rol, programa_id: rol === "COORDINADOR" ? programaId : null, clave_hash: await hashDeClave(clave), clave_actualizada: new Date(), debe_cambiar_clave: rol === "COORDINADOR" }, select: { id: true } });
+    creado = await bd().usuario.create({ data: { email, nombres, rol, programa_id: rol === "COORDINADOR" ? programaId : null, clave_hash: await hashDeClave(clave), clave_actualizada: new Date(), debe_cambiar_clave: true }, select: { id: true } });
+  } catch (e) {
+    if ((e as { code?: string }).code === "P2002") return error(409, "Ya existe un usuario con ese correo.");
+    throw e;
+  }
+  return credenciales(201, { id: creado.id, email, nombres, clave });
+}
+
+/**
+ * La clave temporal va al administrador, que la entrega como prefiera
+ * (copiar, WhatsApp, su correo o el relay SMTP). Es la única vez que sale en
+ * claro: en la base solo queda el hash, y el usuario debe cambiarla al
+ * primer ingreso (CA-014.8), así que lo que viaje por un chat deja de servir
+ * en cuanto entra. `no-store` para que ningún caché la guarde.
+ */
+function credenciales(status: number, datos: { id: string; email: string; nombres: string; clave: string }) {
+  return Response.json({ credenciales: datos }, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+/**
+ * Alta con Aldea (SPEC-018, sección 2): sin clave, porque la valida la
+ * universidad. Si el aviso por correo falla la cuenta se queda: no hay un
+ * secreto que el coordinador no conozca, solo un aviso que no le llegó.
+ */
+async function crearConAldea({ email, nombres, rol, programaId }: { email: string; nombres: string; rol: "ADMIN" | "COORDINADOR"; programaId: number | null }) {
+  try {
+    await bd().usuario.create({ data: { email, nombres, rol, programa_id: rol === "COORDINADOR" ? programaId : null, clave_hash: null, debe_cambiar_clave: false }, select: { id: true } });
   } catch (e) {
     if ((e as { code?: string }).code === "P2002") return error(409, "Ya existe un usuario con ese correo.");
     throw e;
   }
   try {
-    const entrega = await entregarCredenciales(email, nombres, clave);
-    if (entrega === "prueba") {
-      return Response.json({
-        mensaje: "Usuario creado. Copie la contraseña temporal ahora: no se volverá a mostrar.",
-        clave,
-        entrega,
-      }, { status: 201 });
-    }
+    await avisarAcceso(email, nombres);
   } catch (e) {
-    // Un usuario nuevo sin conocer su clave no debe quedar habilitado.
-    await bd().usuario.delete({ where: { id: creado.id } }).catch(() => {});
-    console.error("[usuarios] no se enviaron las credenciales:", (e as Error).message);
-    return error(502, "No fue posible enviar el correo. Revise la configuración SMTP e intente de nuevo.");
+    console.error("[usuarios] no se envió el aviso de acceso:", (e as Error).message);
+    return Response.json({ mensaje: `Acceso habilitado. No se pudo enviar el aviso por correo: avísele a ${email} que ya puede entrar con su usuario de Aldea.` }, { status: 201 });
   }
-  return Response.json({ mensaje: `Credenciales enviadas a ${email}.` }, { status: 201 });
+  return Response.json({ mensaje: `Acceso habilitado. Se avisó a ${email} que entre con su usuario de Aldea.` }, { status: 201 });
+}
+
+/**
+ * Nueva clave temporal para quien perdió la suya, o para cuando el
+ * administrador cerró la entrega sin copiarla: solo existe el hash, así que
+ * no hay forma de volver a mostrar la anterior.
+ */
+async function restablecer(id: string) {
+  const yo = await administrador();
+  if (!yo) return error(403, "Solo el administrador gestiona usuarios.");
+  if (proveedorAuth() === "api") return error(409, "La contraseña se cambia en Aldea, no en este sistema.");
+  if (id === yo.id) return error(409, "Cambie su propia contraseña en «Mi contraseña de administrador».");
+  const fila = await bd().usuario.findUnique({ where: { id }, select: { id: true, email: true, nombres: true, activo: true } });
+  if (!fila) return error(404, "El usuario ya no existe.");
+  if (!fila.activo) return error(409, "Active el usuario antes de generarle una contraseña.");
+  const clave = claveTemporal();
+  await bd().usuario.update({ where: { id }, data: { clave_hash: await hashDeClave(clave), clave_actualizada: new Date(), debe_cambiar_clave: true } });
+  return credenciales(200, { id: fila.id, email: fila.email, nombres: fila.nombres, clave });
 }
 
 export async function PATCH(req: Request) {
   if (!(await administrador())) return error(403, "Solo el administrador gestiona usuarios.");
   const cuerpo = await req.json().catch(() => null);
   const id = typeof cuerpo?.id === "string" ? cuerpo.id : "";
+  if (cuerpo?.restablecer === true) return restablecer(id);
   const activo = typeof cuerpo?.activo === "boolean" ? cuerpo.activo : null;
   if (!id || activo === null) return error(400, "La solicitud no es válida.");
   // Activar o desactivar es el único cambio que llega sin el formulario.

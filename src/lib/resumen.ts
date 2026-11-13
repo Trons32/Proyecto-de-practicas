@@ -95,6 +95,17 @@ export function separarEnProgreso<
  */
 export const legible = (texto: string) => texto.replace(/_/g, " ");
 
+/**
+ * El nombre visible de una facultad. La clave sale del formato oficial y es
+ * llave en la base y en cada asignación guardada, así que no se renombra: si
+ * el formato la escribió distinto al nombre real de la facultad, se corrige
+ * solo al mostrarla.
+ */
+const NOMBRE_FACULTAD: Record<string, string> = {
+  "CIENCIAS_BÁSICAS_INGENIERÍAS_Y_ARQUITECTURA": "CIENCIAS BÁSICAS, INGENIERÍA Y ARQUITECTURA",
+};
+export const nombreFacultad = (clave: string) => NOMBRE_FACULTAD[clave] ?? legible(clave);
+
 /** "hace 5 minutos", "ayer"… para la marca de última edición. */
 export function desde(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();

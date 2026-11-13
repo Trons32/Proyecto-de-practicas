@@ -9,7 +9,8 @@ import { respaldoActual } from "@/lib/datos/respaldo-stores";
 import Encabezado from "@/components/Encabezado";
 import { Boton } from "@/components/ui";
 import { sileo } from "@/lib/toast";
-import { FiDownload } from "@/components/iconos";
+import Link from "next/link";
+import { FiDownload, FiUpload } from "@/components/iconos";
 
 /**
  * Respaldo de datos: exportar todo el estado de la base en un JSON.
@@ -71,8 +72,25 @@ export default function RespaldoDatos() {
           </Boton>
         </section>
 
+        <section className="tarjeta tarjeta-sombra p-5 lg:col-span-2">
+          <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">
+            Importar periodos anteriores
+          </h3>
+          <p className="mt-1 text-sm text-[var(--color-texto-suave)]">
+            Cargue el Excel de asignación de periodos que no se hicieron en el sistema —en el formato
+            que tuvieran entonces— para completar el comparativo estadístico. Cada hoja se revisa
+            antes de guardarse y queda aprobada, con la constancia del archivo del que salió.
+          </p>
+          <Link
+            href="/admin/datos/importar"
+            className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-cecar-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-cecar-700"
+          >
+            <FiUpload aria-hidden /> Importar desde Excel
+          </Link>
+        </section>
+
         <section className="tarjeta tarjeta-sombra p-5">
-          <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">Importar</h3>
+          <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">Importar un respaldo</h3>
           <p className="mt-1 text-sm text-[var(--color-texto-suave)]">
             Los datos viven en la base de datos. Para cargar un respaldo, el encargado de la base lo
             convierte con db/respaldo-a-sql.ts, que lo revisa antes de tocar nada.

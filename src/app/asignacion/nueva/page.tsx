@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FACULTADES, PROGRAMAS } from "@/lib/catalogos";
 import { periodosAsignables } from "@/lib/tipos";
+import { nombreFacultad } from "@/lib/resumen";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
 import { useSesionStore } from "@/lib/stores/sesion-store";
 import Encabezado from "@/components/Encabezado";
@@ -102,7 +103,7 @@ export default function NuevaAsignacion() {
 
           <Campo etiqueta="Facultad" requerido>
             <Seleccion
-              opciones={FACULTADES}
+              opciones={FACULTADES.map((f) => ({ valor: f, texto: nombreFacultad(f) }))}
               value={facultad}
               onChange={(e) => {
                 setFacultad(e.target.value);

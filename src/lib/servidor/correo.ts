@@ -1,5 +1,6 @@
 /** Envío SMTP de credenciales (SPEC-014). La configuración vive en variables
- * de entorno para poder usar el relay institucional sin exponer su secreto. */
+ * de entorno para poder usar el relay institucional sin exponer su secreto.
+ * Desde SPEC-014 §Entrega el envío lo pide el administrador; no es automático. */
 import nodemailer from "nodemailer";
 
 function configuracion() {
@@ -29,17 +30,25 @@ export async function enviarCredenciales(destinatario: string, nombres: string, 
 }
 
 /**
- * Durante una prueba sin relay, el administrador recibe la clave una sola vez
- * en pantalla. Nunca se permite en producción: allí una clave expuesta en una
- * respuesta HTTP sería peor que dejar el alta pendiente de SMTP.
+ * Con Aldea (SPEC-018) no hay clave que entregar: el aviso solo dice que ya
+ * puede entrar con su usuario de la universidad.
  */
-export async function entregarCredenciales(destinatario: string, nombres: string, clave: string): Promise<"smtp" | "prueba"> {
-  if (process.env.CREDENCIALES_ENTREGA === "prueba") {
-    if (process.env.NODE_ENV === "production" && process.env.PERMITIR_CREDENCIALES_PRUEBA !== "1") {
-      throw new Error("La entrega de pruebas requiere PERMITIR_CREDENCIALES_PRUEBA=1 en producción.");
-    }
-    return "prueba";
-  }
-  await enviarCredenciales(destinatario, nombres, clave);
-  return "smtp";
+export async function avisarAcceso(destinatario: string, nombres: string): Promise<void> {
+  const smtp = configuracion();
+  const transporte = nodemailer.createTransport({ host: smtp.host, port: smtp.port, secure: smtp.secure, auth: smtp.auth });
+  await transporte.sendMail({
+    from: smtp.from,
+    to: destinatario,
+    subject: "Acceso habilitado · Asignación Académica CECAR",
+    text: `Hola ${nombres},
+
+Se habilitó tu acceso a Asignación Académica CECAR.
+
+Ingresa con tu usuario y contraseña de Aldea.
+
+CECAR`,
+  });
 }
+
+/** Si hay relay configurado: sin él, la pantalla no ofrece el envío por SMTP. */
+export const smtpConfigurado = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_DESDE);

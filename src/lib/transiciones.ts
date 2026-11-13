@@ -14,13 +14,18 @@
  *   devuelta                 enviada|en_revision → en_correccion  (con plazo)
  *   reabierta_por_parametros aprobada            → en_correccion  (con plazo)
  *
+ * Aparte, la importación (SPEC-017): una asignación nueva puede nacer
+ * aprobada si su único evento es `importada` y lo registra el
+ * administrador. Después no admite ningún evento ni cambio: es el
+ * expediente de un periodo cerrado.
+ *
  * Puro, como `calculo.ts`: se verifica con `verificar-transiciones.ts`.
  *
  * `actor` es el usuario de la sesión del servidor (SPEC-008): los eventos
  * nuevos tienen que llevar su nombre y su rol. Sin eso, `rolAutor` sería lo
  * que el navegador quisiera declarar.
  */
-import { cursosBase, esEditable, type Asignacion, type EstadoAsignacion, type Evento, type TipoEvento } from "./tipos";
+import { cursosBase, esEditable, esImportada, type Asignacion, type EstadoAsignacion, type Evento, type TipoEvento } from "./tipos";
 
 interface Paso {
   desde: EstadoAsignacion[];
@@ -66,6 +71,16 @@ export interface Actor {
 
 /** null si el cambio es legal; si no, el motivo, dicho para el usuario. */
 export function revisarGuardado(anterior: Asignacion | undefined, nueva: Asignacion, actor?: Actor): string | null {
+  if (!anterior && esImportada(nueva)) return revisarImportacion(nueva, actor);
+  if (anterior && esImportada(anterior)) {
+    const igual =
+      nueva.estado === anterior.estado &&
+      nueva.version === anterior.version &&
+      nueva.bitacora.length === anterior.bitacora.length &&
+      !nueva.lineaBase &&
+      contenido(nueva) === contenido(anterior);
+    return igual ? null : "Una asignación importada no se modifica.";
+  }
   if (!anterior) {
     const [creada, ...resto] = nueva.bitacora;
     // El rol del evento de creación lo fija `nuevaAsignacion`; el nombre sí
@@ -154,9 +169,34 @@ function revisarLineaBase(anterior: Asignacion, nueva: Asignacion): string | nul
     : "La línea base tiene que ser lo que se está aprobando.";
 }
 
-/** Solo un borrador que nunca se entregó se puede eliminar: lo demás tiene expediente. */
-export function revisarBorrado(anterior: Asignacion | undefined): string | null {
+/**
+ * Una importada nace aprobada, a nombre del administrador, con un solo
+ * evento que dice de qué archivo salió. No lleva línea base: no hubo
+ * proyección que comparar.
+ */
+function revisarImportacion(nueva: Asignacion, actor?: Actor): string | null {
+  const [evento, ...resto] = nueva.bitacora;
+  if (resto.length > 0) return "Una asignación importada solo lleva el evento de importación.";
+  if (evento.rolAutor !== "ADMIN" || (actor && actor.rol !== "ADMIN")) {
+    return "Solo el administrador importa asignaciones.";
+  }
+  if (actor && evento.autor !== actor.nombres) return "La importación tiene que quedar a nombre de quien la hace.";
+  if (!evento.nota) return "La importación tiene que decir de qué archivo salió.";
+  if (nueva.estado !== "aprobada" || nueva.version !== 0) return "Una asignación importada nace aprobada, en la versión 0.";
+  if (nueva.lineaBase) return "Una asignación importada no tiene línea base.";
+  return null;
+}
+
+/**
+ * Solo un borrador que nunca se entregó se puede eliminar: lo demás tiene
+ * expediente. La excepción es una importada, que el administrador puede
+ * reemplazar por otra lectura del mismo periodo: su expediente es el Excel.
+ */
+export function revisarBorrado(anterior: Asignacion | undefined, actor?: Actor): string | null {
   if (!anterior) return null;
+  if (esImportada(anterior)) {
+    return actor && actor.rol !== "ADMIN" ? "Solo el administrador reemplaza una asignación importada." : null;
+  }
   return anterior.estado === "borrador" && anterior.version === 0
     ? null
     : "Una asignación que ya se entregó no se puede eliminar.";

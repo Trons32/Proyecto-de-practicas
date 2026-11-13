@@ -19,7 +19,10 @@ import { useEffect, useRef, useState } from "react";
  * · `null` es "sin dato": no se dibuja barra, para no confundirlo con cero.
  */
 
-export const COLOR_SERIE = ["#00733b", "#2a78d6", "#eb6834"] as const;
+// El morado (4.º) entra por SPEC-016: las cuatro dedicaciones del Excel
+// (TC, MT, CAT, tutor). Validado en este orden con validate_palette.js
+// (modo claro, peor par adyacente ΔE 22,8 deutan); no lo reordenes.
+export const COLOR_SERIE = ["#00733b", "#2a78d6", "#eb6834", "#8e5cc9"] as const;
 const COLOR_UNA_SERIE = COLOR_SERIE[0];
 const GRUESO_MAX = 24;
 const SEPARACION = 2;
@@ -286,8 +289,8 @@ export function GraficaBarras({ titulo, subtitulo, datos }: { titulo: string; su
 }
 
 /**
- * Columnas agrupadas de hasta tres series (la paleta valida tres; más no
- * se distinguen). Para comparar las mismas series entre periodos.
+ * Columnas agrupadas de hasta cuatro series (las que valida la paleta; más
+ * no se distinguen). Para comparar las mismas series entre periodos.
  */
 export function GraficaAgrupada({
   titulo,
@@ -302,7 +305,7 @@ export function GraficaAgrupada({
   series: Serie[];
   alto?: number;
 }) {
-  if (series.length > COLOR_SERIE.length) throw new Error("GraficaAgrupada admite hasta tres series.");
+  if (series.length > COLOR_SERIE.length) throw new Error("GraficaAgrupada admite hasta cuatro series.");
   const [ref, ancho] = useAncho<HTMLDivElement>();
   const [tip, setTip] = useState<Tip | null>(null);
   const marcas = escala(Math.max(0, ...series.flatMap((s) => s.valores.map((v) => v ?? 0))));

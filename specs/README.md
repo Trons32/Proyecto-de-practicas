@@ -26,6 +26,9 @@ NNN-nombre/spec.md    problema, reglas, criterios de aceptación (Dado / Cuando 
 | 011 | Migración a PostgreSQL con Prisma       | P0        | Implementada; falta probar en la VPS |
 | 012 | Parámetros: cada cambio se guarda por separado | P1 | Implementada; falta prueba manual en la base |
 | 013 | Novedad u observación según la convocatoria | P1 | Implementada |
+| 018 | Sesión con NextAuth y credenciales de Aldea | P0 | Fase 1 implementada (piloto, claves locales); fase 2 espera la API de Aldea |
+| 019 | Cargar muchos cursos sin fatiga | P1 | Implementada |
+| 020 | Descargas, actividades y apoyo: sin exceso y más ágiles | P0 | Implementada |
 
 ## Definición de terminado
 
