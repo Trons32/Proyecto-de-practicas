@@ -29,6 +29,8 @@ NNN-nombre/spec.md    problema, reglas, criterios de aceptación (Dado / Cuando 
 | 018 | Sesión con NextAuth y credenciales de Aldea | P0 | Fase 1 implementada (piloto, claves locales); fase 2 espera la API de Aldea |
 | 019 | Cargar muchos cursos sin fatiga | P1 | Implementada |
 | 020 | Descargas, actividades y apoyo: sin exceso y más ágiles | P0 | Implementada |
+| 021 | Directorio de docentes: buscar por cédula o código | P1 | Implementada; listado cargado (1.638) |
+| 022 | El cierre bloquea, y un cambio de parámetros reabre con plazo | P0 | Implementada |
 
 ## Definición de terminado
 

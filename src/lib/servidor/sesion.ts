@@ -80,8 +80,16 @@ export async function usuarioActual(): Promise<Usuario | null> {
   // Importación diferida: `src/auth.ts` importa este archivo, y las pruebas
   // lo usan sin cargar NextAuth.
   const { auth } = await import("@/auth");
-  const sesion = await auth();
-  return sesion?.usuario ?? null;
+  try {
+    const sesion = await auth();
+    return sesion?.usuario ?? null;
+  } catch (e) {
+    // Sin AUTH_URL, NextAuth arma la URL con los encabezados del proxy, y un
+    // `x-forwarded-proto: "https,http"` la rompe. Antes eso salía como un
+    // 500 vacío en cada ruta; ahora queda en el log y la ruta niega el acceso.
+    console.error("[sesion] no se pudo leer la sesión (¿falta AUTH_URL?):", e);
+    return null;
+  }
 }
 
 /**

@@ -98,6 +98,9 @@ model docente {
   id               String             @id(map: "pk_docente") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   documento        String             @unique(map: "uq_docente_documento") @db.VarChar(15)
   nombres          String             @db.VarChar(150)
+  codigo           String?            @unique(map: "uq_docente_codigo") @db.VarChar(12)
+  origen           String             @default("asignacion") @db.VarChar(12)
+  actualizado      DateTime?          @db.Timestamptz(6)
   docente_asignado docente_asignado[]
 }
 

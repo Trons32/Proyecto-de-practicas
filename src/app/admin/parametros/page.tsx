@@ -621,7 +621,7 @@ function ModalParametro({
       description:
         n === 0
           ? r.novedad.motivo
-          : `${n === 1 ? "1 asignación aprobada quedó afectada" : `${n} asignaciones aprobadas quedaron afectadas`}. Decida en ${tituloDe(useNovedadesStore.getState().novedades, r.novedad)}.`,
+          : `${n === 1 ? "1 asignación entregada quedó afectada" : `${n} asignaciones entregadas quedaron afectadas`}. Decida en ${tituloDe(useNovedadesStore.getState().novedades, r.novedad)}.`,
     });
   };
 
@@ -658,8 +658,8 @@ function ModalParametro({
           <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
             {afectadas.length === 1
-              ? "1 asignación aprobada dejará de cumplir las reglas."
-              : `${afectadas.length} asignaciones aprobadas dejarán de cumplir las reglas.`}{" "}
+              ? "1 asignación entregada dejará de cumplir las reglas."
+              : `${afectadas.length} asignaciones entregadas dejarán de cumplir las reglas.`}{" "}
             No se reabrirán solas: podrá decidir sobre cada una en la {clase}.
           </span>
         </p>

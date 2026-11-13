@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, ReactNode, SelectHTMLAttributes, InputHTMLAttributes, ButtonHTMLAttributes, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, ReactNode, SelectHTMLAttributes, InputHTMLAttributes, ButtonHTMLAttributes, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { FiCheck, FiChevronDown, FiChevronLeft, FiChevronRight, FiMinus, FiPlus } from "./iconos";
 import { ETIQUETA_ESTADO, type EstadoAsignacion } from "@/lib/tipos";
@@ -329,6 +329,53 @@ export function Casilla({
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * Coloca una lista flotante (pintada en <body> con `position: fixed`) bajo
+ * su campo, o encima si abajo no cabe, y la sigue al hacer scroll. Las
+ * tarjetas (`Seccion`) llevan `overflow-hidden`: una lista absoluta dentro
+ * de ellas quedaba recortada.
+ *
+ * La posición se escribe en el estilo del nodo y no en estado: se
+ * recalcula en cada scroll, y un setState por evento volvería a pintar
+ * todo el componente.
+ */
+export function usePosicionFlotante(
+  abierto: boolean,
+  anclaRef: RefObject<HTMLElement | null>,
+  listaRef: RefObject<HTMLElement | null>,
+  anchoMinimo = 440
+) {
+  useLayoutEffect(() => {
+    if (!abierto) return;
+    const ubicar = () => {
+      const campo = anclaRef.current?.getBoundingClientRect();
+      const lista = listaRef.current;
+      if (!campo || !lista) return;
+      const margen = 12;
+      const ancho = Math.min(Math.max(campo.width, anchoMinimo), window.innerWidth - 2 * margen);
+      const izquierda = Math.min(Math.max(campo.left, margen), window.innerWidth - margen - ancho);
+      const abajo = window.innerHeight - campo.bottom - margen;
+      const arriba = campo.top - margen;
+      const haciaArriba = abajo < 260 && arriba > abajo;
+      Object.assign(lista.style, {
+        left: `${izquierda}px`,
+        width: `${ancho}px`,
+        maxHeight: `${Math.max(Math.min(340, (haciaArriba ? arriba : abajo) - 6), 120)}px`,
+        top: haciaArriba ? "" : `${campo.bottom + 6}px`,
+        bottom: haciaArriba ? `${window.innerHeight - campo.top + 6}px` : "",
+      });
+    };
+    ubicar();
+    // En captura: también se mueve si hace scroll un contenedor, no solo la ventana.
+    window.addEventListener("scroll", ubicar, true);
+    window.addEventListener("resize", ubicar);
+    return () => {
+      window.removeEventListener("scroll", ubicar, true);
+      window.removeEventListener("resize", ubicar);
+    };
+  }, [abierto, anclaRef, listaRef, anchoMinimo]);
+}
+
 export interface OpcionBuscable {
   valor: string;
   texto: string;
@@ -391,38 +438,7 @@ export function SelectorBuscable({
     });
   }, [opciones, consulta]);
 
-  // La posición se escribe en el estilo del nodo y no en estado: se
-  // recalcula en cada scroll, y un setState por evento volvería a pintar
-  // todo el selector.
-  useLayoutEffect(() => {
-    if (!abierto) return;
-    const ubicar = () => {
-      const campo = campoRef.current?.getBoundingClientRect();
-      const lista = listaRef.current;
-      if (!campo || !lista) return;
-      const margen = 12;
-      const ancho = Math.min(Math.max(campo.width, 440), window.innerWidth - 2 * margen);
-      const izquierda = Math.min(Math.max(campo.left, margen), window.innerWidth - margen - ancho);
-      const abajo = window.innerHeight - campo.bottom - margen;
-      const arriba = campo.top - margen;
-      const haciaArriba = abajo < 260 && arriba > abajo;
-      Object.assign(lista.style, {
-        left: `${izquierda}px`,
-        width: `${ancho}px`,
-        maxHeight: `${Math.max(Math.min(340, (haciaArriba ? arriba : abajo) - 6), 120)}px`,
-        top: haciaArriba ? "" : `${campo.bottom + 6}px`,
-        bottom: haciaArriba ? `${window.innerHeight - campo.top + 6}px` : "",
-      });
-    };
-    ubicar();
-    // En captura: también se mueve si hace scroll un contenedor, no solo la ventana.
-    window.addEventListener("scroll", ubicar, true);
-    window.addEventListener("resize", ubicar);
-    return () => {
-      window.removeEventListener("scroll", ubicar, true);
-      window.removeEventListener("resize", ubicar);
-    };
-  }, [abierto]);
+  usePosicionFlotante(abierto, campoRef, listaRef);
 
   useEffect(() => {
     if (abierto) document.getElementById(opcionId(activo))?.scrollIntoView({ block: "nearest" });

@@ -16,6 +16,7 @@ import {
 } from "@/lib/novedades";
 import { useConfigStore } from "./config-store";
 import { useAsignacionStore, type Autor } from "./asignacion-store";
+import { reabrible } from "@/lib/plazos";
 
 // Igual que en tipos.ts: randomUUID no existe fuera de contextos seguros.
 const uid = () =>
@@ -39,7 +40,7 @@ interface NovedadesStore {
   aplicarParametros: (siguiente: Parametros, motivo: string, autor: Autor) => Promise<ResultadoAplicar>;
 
   /**
-   * Reabre asignaciones aprobadas y deja la decisión en la novedad que las
+   * Reabre asignaciones entregadas (o bloqueadas por el cierre, SPEC-022) y deja la decisión en la novedad que las
    * registró. Sin `novedadId`, cada una se atribuye a la última novedad que
    * la afectó; las que ninguna registró se reabren igual, sin vínculo.
    * Devuelve cuántas se reabrieron.
@@ -95,7 +96,7 @@ export const useNovedadesStore = create<NovedadesStore>()(
           // Con impacto, el motivo lo escribe el administrador: de esa novedad
           // salen las decisiones de reapertura (SPEC-012).
           if (!motivo.trim() && afectadas.length > 0) {
-            return { ok: false, error: "Este cambio afecta asignaciones aprobadas: escriba el motivo." };
+            return { ok: false, error: "Este cambio afecta asignaciones entregadas: escriba el motivo." };
           }
           const { periodo, cerrada } = periodoDeReferencia(config.convocatorias);
 
@@ -135,15 +136,23 @@ export const useNovedadesStore = create<NovedadesStore>()(
 
         solicitarCorreccion: (ids, autor, nota, plazo, novedadId) => {
           const asignaciones = useAsignacionStore.getState().asignaciones;
-          const aprobadas = ids.filter(
-            (id) => asignaciones.find((a) => a.id === id)?.estado === "aprobada"
-          );
+          const convocatorias = useConfigStore.getState().convocatorias;
+          // Con la convocatoria cerrada, no solo lo aprobado (SPEC-022): también
+          // lo enviado, lo que está en revisión y el borrador que el cierre bloqueó.
+          const elegibles = ids.filter((id) => {
+            const a = asignaciones.find((x) => x.id === id);
+            return a !== undefined && reabrible(a, convocatorias);
+          });
 
-          // Agrupadas por la novedad que las originó, para que cada evento
-          // de la bitácora apunte a la suya.
+          // Agrupadas por la novedad que las originó, para que cada evento de
+          // la bitácora apunte a la suya. Las que el administrador eligió sin
+          // que la novedad las marcara apuntan a la más reciente: es la que
+          // explica al coordinador qué parámetros cambiaron.
+          const novedades = get().novedades;
+          const reciente = novedades.at(-1)?.id;
           const grupos = new Map<string | undefined, string[]>();
-          for (const id of aprobadas) {
-            const origen = novedadId ?? novedadDeAfectada(get().novedades, id)?.id;
+          for (const id of elegibles) {
+            const origen = novedadId ?? novedadDeAfectada(novedades, id)?.id ?? reciente;
             grupos.set(origen, [...(grupos.get(origen) ?? []), id]);
           }
 
@@ -151,10 +160,15 @@ export const useNovedadesStore = create<NovedadesStore>()(
           let total = 0;
           for (const [origen, grupo] of grupos) {
             total += useAsignacionStore.getState().reabrirVarias(grupo, autor, nota, plazo, origen);
-            if (origen) {
+            // La decisión solo se registra sobre una afectada de esa novedad:
+            // la base la exige (fk_nd_afectacion), y para las demás la
+            // constancia es el evento de la bitácora.
+            const afectadas = new Set(novedades.find((n) => n.id === origen)?.afectadas.map((a) => a.asignacionId));
+            const decididas = grupo.filter((asignacionId) => afectadas.has(asignacionId));
+            if (origen && decididas.length) {
               decidir(
                 origen,
-                grupo.map((asignacionId) => ({
+                decididas.map((asignacionId) => ({
                   asignacionId,
                   accion: "reabierta" as const,
                   fecha,

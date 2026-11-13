@@ -18,6 +18,9 @@ import {
 } from "@/lib/catalogos";
 import { useConfigStore } from "@/lib/stores/config-store";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
+import { completarDocente, type FichaDirectorio } from "@/lib/directorio";
+import { useDirectorio } from "@/lib/usar-directorio";
+import SugerenciasCedula from "./SugerenciasCedula";
 import { buscarFicha, catalogoDeCursos, completarCurso, fichasDePrograma, grupoSiguiente, resumenCurso } from "@/lib/cursos-conocidos";
 import {
   Docente,
@@ -327,6 +330,47 @@ export default function FormularioDocente({
     enfocar.current = `curso-grupo-${copia.id}`;
   };
 
+  /* ---------- directorio de docentes (SPEC-021) ---------- */
+  const asignacionActual = useMemo(
+    () => asignaciones.find((a) => a.docentes.some((d) => d.id === docente.id)),
+    [asignaciones, docente.id]
+  );
+  const documentosEnAsignacion = useMemo(
+    () => new Set((asignacionActual?.docentes ?? []).filter((d) => d.id !== docente.id).map((d) => d.documento.trim()).filter(Boolean)),
+    [asignacionActual, docente.id]
+  );
+  /** Completa lo vacío con el directorio; la dedicación trae su apoyo, como al elegirla a mano. */
+  const usarFicha = (ficha: FichaDirectorio, elegida = false) => {
+    // Elegida de la lista, su identidad manda sobre lo escrito: puede ser
+    // otra persona que la que se estaba tecleando.
+    const base: Docente = elegida ? { ...docente, documento: ficha.documento, nombres: ficha.nombres } : docente;
+    const cambios = completarDocente(base, ficha);
+    const cambioIdentidad = base.documento !== docente.documento || base.nombres !== docente.nombres;
+    const n = Object.keys(cambios).length + (cambioIdentidad ? 1 : 0);
+    if (n === 0) {
+      sileo.info({ title: "Nada que completar", description: "La ficha ya tenía esos datos." });
+      return;
+    }
+    let siguiente: Docente = { ...base, ...cambios };
+    if (cambios.dedicacion) siguiente = aplicarReglaDedicacion(siguiente, cambios.dedicacion, reglas);
+    onCambio(siguiente);
+    sileo.success({
+      title: "Datos traídos del directorio",
+      description: `${n} ${n === 1 ? "campo completado" : "campos completados"}. Revíselos y guarde.`,
+    });
+  };
+
+  const directorio = useDirectorio({
+    documento: docente.documento,
+    asignacionId: asignacionActual?.id,
+    activo: !soloLectura,
+    autoAplicar: !docente.nombres.trim(),
+    alEncontrar: usarFicha,
+  });
+  const repetido = documentosEnAsignacion.has(docente.documento.trim());
+  const anclaDocumento = useRef<HTMLDivElement>(null);
+  const campoDocumento = campo("documento", (v) => set("documento", v.replace(/\D/g, "")));
+
   /* ---------- descargas y actividades (SPEC-020) ---------- */
   /** La fila nueva abre su buscador de rol: es lo primero que hay que elegir. */
   const agregarDescarga = () => {
@@ -473,13 +517,59 @@ export default function FormularioDocente({
               error={invalido("documento")}
               ayuda={mensajeDe("documento")}
             >
-              <Entrada
-                inputMode="numeric"
-                value={docente.documento}
-                error={invalido("documento")}
-                placeholder="1003262180"
-                {...campo("documento", (v) => set("documento", v.replace(/\D/g, "")))}
+              <div ref={anclaDocumento}>
+                <Entrada
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={docente.documento}
+                  error={invalido("documento")}
+                  placeholder="Escriba la cédula: se sugiere del directorio"
+                  role="combobox"
+                  aria-expanded={directorio.sugerencias.length > 0}
+                  aria-controls="sugerencias-cedula"
+                  aria-autocomplete="list"
+                  aria-activedescendant={directorio.sugerencias.length > 0 ? `sugerencias-cedula-${directorio.resaltada}` : undefined}
+                  {...campoDocumento}
+                  onBlur={(e) => {
+                    void campoDocumento.onBlur(e);
+                    directorio.cerrar();
+                  }}
+                  onFocus={directorio.abrir}
+                  onInput={directorio.abrir}
+                  onKeyDown={directorio.teclado}
+                />
+              </div>
+              <SugerenciasCedula
+                id="sugerencias-cedula"
+                anclaRef={anclaDocumento}
+                consulta={docente.documento.trim()}
+                sugerencias={directorio.sugerencias}
+                resaltada={directorio.resaltada}
+                onResaltar={directorio.resaltar}
+                onElegir={(f) => void directorio.elegir(f)}
               />
+              {/* El documento trae los datos del directorio (SPEC-021): sin
+                  campo aparte, una línea dice qué encontró. */}
+              <p className="mt-1 min-h-4 text-[11px]" aria-live="polite">
+                {repetido ? (
+                  <span className="text-amber-700">Este docente ya está en la asignación.</span>
+                ) : directorio.estado === "buscando" ? (
+                  <span className="text-[var(--color-texto-suave)]">Buscando en el directorio…</span>
+                ) : directorio.estado === "sugiriendo" && directorio.sugerencias.length > 0 ? (
+                  <span className="text-[var(--color-texto-suave)]">Elija de la lista o siga escribiendo.</span>
+                ) : directorio.usada ? (
+                  <span className="text-cecar-700">Encontrado en el directorio: se cargaron sus datos.</span>
+                ) : directorio.estado === "encontrado" && directorio.ficha ? (
+                  <span className="text-[var(--color-texto-suave)]">
+                    En el directorio: {directorio.ficha.nombres}.{" "}
+                    <button type="button" onClick={directorio.usar} className="font-semibold text-cecar-700 underline-offset-2 hover:underline">
+                      Usar sus datos
+                    </button>
+                  </span>
+                ) : directorio.estado === "no_encontrado" ? (
+                  <span className="text-[var(--color-texto-suave)]">No está en el directorio: complete los datos a mano.</span>
+                ) : null}
+              </p>
             </Campo>
 
             <Campo
@@ -1004,27 +1094,18 @@ export default function FormularioDocente({
         >
           <div className="grid gap-4 sm:grid-cols-3">
             {APOYO.map(({ clave, etiqueta }) => (
-              <div
+              <Campo
                 key={clave}
-                className="rounded-xl border border-[var(--color-borde)] bg-[var(--color-superficie)]/50 p-4"
+                etiqueta={etiqueta}
+                ayuda={regla ? `Institucional: ${regla[clave]} h${docente[clave] !== regla[clave] ? " · ajustado" : ""}` : undefined}
               >
-                <p className="etiqueta">{etiqueta}</p>
-                <Contador
-                  etiqueta={etiqueta}
-                  valor={docente[clave]}
-                  max={40}
-                  onCambio={(v) => set(clave, v)}
+                <Entrada
+                  type="number"
+                  min={0}
+                  value={docente[clave]}
+                  onChange={(e) => set(clave, Math.max(0, Number(e.target.value) || 0))}
                 />
-                {regla && (
-                  <p
-                    className={`mt-2 text-[11px] ${
-                      docente[clave] !== regla[clave] ? "text-amber-700" : "text-[var(--color-texto-suave)]"
-                    }`}
-                  >
-                    Institucional: {regla[clave]} h{docente[clave] !== regla[clave] && " · ajustado"}
-                  </p>
-                )}
-              </div>
+              </Campo>
             ))}
           </div>
           <p className="mt-3 text-sm text-[var(--color-texto-suave)]">

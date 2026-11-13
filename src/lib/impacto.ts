@@ -12,7 +12,8 @@
  */
 
 import { resumirAsignacion } from "./resumen";
-import { esImportada } from "./tipos";
+import { reabrible } from "./plazos";
+import type { Convocatoria } from "./convocatoria";
 import { CONFIG_OFICIAL, type Configuracion } from "./calculo";
 import type { Asignacion } from "./tipos";
 
@@ -32,12 +33,11 @@ export interface AsignacionAfectada {
 }
 
 /**
- * Las asignaciones aprobadas que incumplen la configuración vigente.
- *
- * Solo se miran las aprobadas: un borrador se corrige solo al seguir
- * editándolo, y lo que está en revisión lo verá el administrador de todos
- * modos antes de decidir. Reabrir es un acto sobre lo que ya se dio por
- * cerrado.
+ * Las asignaciones que el coordinador ya no puede corregir por su cuenta y
+ * que incumplen la configuración vigente: las aprobadas, las enviadas, las
+ * que están en revisión y, con `convocatorias`, el borrador que el cierre
+ * bloqueó (SPEC-022). Un borrador abierto se corrige solo al seguir
+ * editándolo.
  *
  * `referencia` es la configuración con la que comparar —por defecto la
  * oficial—; sirve para distinguir los errores que el cambio introduce de
@@ -46,14 +46,17 @@ export interface AsignacionAfectada {
 export function asignacionesAfectadas(
   asignaciones: Asignacion[],
   config: Configuracion,
-  referencia: Configuracion = CONFIG_OFICIAL
+  referencia: Configuracion = CONFIG_OFICIAL,
+  convocatorias: Record<string, Convocatoria> = {}
 ): AsignacionAfectada[] {
   const afectadas: AsignacionAfectada[] = [];
 
   for (const a of asignaciones) {
     // Una importada es el expediente de un periodo cerrado (SPEC-017): se
     // calculó con las reglas de entonces y no hay a quién pedirle corrección.
-    if (a.estado !== "aprobada" || esImportada(a)) continue;
+    // Desde SPEC-022 también lo entregado sin aprobar y el borrador que el
+    // cierre bloqueó: con la convocatoria cerrada, nadie más lo va a corregir.
+    if (!reabrible(a, convocatorias)) continue;
 
     const ahora = resumirAsignacion(a, config);
     if (ahora.totalErrores === 0) continue;

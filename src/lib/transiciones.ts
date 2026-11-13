@@ -12,7 +12,12 @@
  *   revision_abierta         enviada             → en_revision
  *   aprobada                 enviada|en_revision → aprobada
  *   devuelta                 enviada|en_revision → en_correccion  (con plazo)
- *   reabierta_por_parametros aprobada            → en_correccion  (con plazo)
+ *   reabierta_por_parametros borrador|enviada|   → en_correccion  (con plazo)
+ *                            en_revision|aprobada
+ *
+ * Y el reloj (SPEC-022): con la convocatoria cerrada, un borrador ya no se
+ * edita ni se envía; con el plazo de corrección vencido, tampoco una
+ * corrección. Lo decide `bloqueoPorPlazo`, la misma regla de la pantalla.
  *
  * Aparte, la importación (SPEC-017): una asignación nueva puede nacer
  * aprobada si su único evento es `importada` y lo registra el
@@ -26,6 +31,8 @@
  * que el navegador quisiera declarar.
  */
 import { cursosBase, esEditable, esImportada, type Asignacion, type EstadoAsignacion, type Evento, type TipoEvento } from "./tipos";
+import type { Convocatoria } from "./convocatoria";
+import { bloqueoPorPlazo, REABRIBLES } from "./plazos";
 
 interface Paso {
   desde: EstadoAsignacion[];
@@ -41,7 +48,9 @@ const PASOS: Partial<Record<TipoEvento, Paso>> = {
   revision_abierta: { desde: ["enviada"], hacia: "en_revision", rol: "ADMIN" },
   aprobada: { desde: ["enviada", "en_revision"], hacia: "aprobada", rol: "ADMIN" },
   devuelta: { desde: ["enviada", "en_revision"], hacia: "en_correccion", rol: "ADMIN", conPlazo: true },
-  reabierta_por_parametros: { desde: ["aprobada"], hacia: "en_correccion", rol: "ADMIN", conPlazo: true },
+  // Con la convocatoria cerrada, un cambio de parámetros puede tocar lo
+  // entregado y lo que quedó sin entregar (SPEC-022), no solo lo aprobado.
+  reabierta_por_parametros: { desde: REABRIBLES, hacia: "en_correccion", rol: "ADMIN", conPlazo: true },
 };
 
 /**
@@ -70,7 +79,13 @@ export interface Actor {
 }
 
 /** null si el cambio es legal; si no, el motivo, dicho para el usuario. */
-export function revisarGuardado(anterior: Asignacion | undefined, nueva: Asignacion, actor?: Actor): string | null {
+/** Lo que el servidor sabe del momento: la convocatoria del periodo y la hora. */
+export interface Contexto {
+  convocatoria?: Convocatoria | null;
+  ahora?: number;
+}
+
+export function revisarGuardado(anterior: Asignacion | undefined, nueva: Asignacion, actor?: Actor, contexto: Contexto = {}): string | null {
   if (!anterior && esImportada(nueva)) return revisarImportacion(nueva, actor);
   if (anterior && esImportada(anterior)) {
     const igual =
@@ -139,6 +154,14 @@ export function revisarGuardado(anterior: Asignacion | undefined, nueva: Asignac
   // pero no sustituye al coordinador al diligenciar la carga docente.
   if (actor?.rol === "ADMIN" && cambioContenido) {
     return "El administrador solo puede revisar la información del docente.";
+  }
+  // Fuera de plazo, el coordinador ni edita ni entrega (SPEC-022). Se mira
+  // el estado guardado: es el que tenía cuando empezó a escribir. Las
+  // decisiones del administrador (aprobar, devolver, reabrir) siguen.
+  const entrega = nueva.bitacora.slice(previos.length).some((e) => e.tipo === "enviada" || e.tipo === "reenviada");
+  if (actor?.rol !== "ADMIN" && (cambioContenido || entrega)) {
+    const bloqueo = bloqueoPorPlazo(anterior, contexto.convocatoria, contexto.ahora);
+    if (bloqueo) return bloqueo;
   }
   if (!editableAlEmpezar && cambioContenido) {
     return "La asignación ya fue entregada: sus docentes no se pueden modificar.";

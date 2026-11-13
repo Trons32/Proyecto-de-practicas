@@ -74,8 +74,17 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
       if (problema) throw new CambioRechazado(problema);
       await tx.asignacion.delete({ where: { id: aUuid(idBorrado) } });
     }
+    // El reloj lo pone el servidor, no el navegador (SPEC-022): una pestaña
+    // abierta desde antes del cierre no puede entregar fuera de plazo.
+    const convocatorias = new Map(
+      (await tx.convocatoria.findMany({ where: { periodo: { in: [...new Set(asignaciones.map((a) => a.periodo))] } } }))
+        .map((c): [string, Convocatoria] => [c.periodo.trim(), {
+          periodo: c.periodo.trim(), apertura: c.apertura.toISOString(), limite: c.limite.toISOString(), cerradaManualmente: c.cerrada_manualmente,
+        }])
+    );
+    const ahora = Date.now();
     for (const a of asignaciones) {
-      const problema = revisarGuardado(guardadas.get(aUuid(a.id)), a, actor);
+      const problema = revisarGuardado(guardadas.get(aUuid(a.id)), a, actor, { convocatoria: convocatorias.get(a.periodo) ?? null, ahora });
       if (problema) throw new CambioRechazado(`${a.programa} ${a.periodo}: ${problema}`);
     }
 
@@ -122,7 +131,10 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
           const nombres = d.nombres.trim() || "—";
           const persona = await tx.docente.upsert({
             where: { documento: doc },
-            update: importada ? {} : { nombres },
+            // El nombre de una entrega pasa a mandar sobre el del listado
+            // (SPEC-021): una recarga del listado ya no lo reescribe.
+            // Una ficha sin nombre no borra el que ya tenga la persona.
+            update: importada || !d.nombres.trim() ? {} : { nombres, origen: "asignacion" },
             create: { documento: doc, nombres },
             select: { id: true },
           });

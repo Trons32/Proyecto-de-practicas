@@ -155,10 +155,14 @@ BORRADOR ──envía──► ENVIADA ──cierra convocatoria──► EN_REV
                                                   (cambio de parámetros)
 ```
 
-**`esEditable(estado)` es la única autoridad sobre si se puede tocar algo**:
-solo `borrador` y `en_correccion`. El store lo hace cumplir —`agregarDocente`,
-`actualizarDocente` y `eliminarDocente` no hacen nada si la asignación está
-congelada— así que ocultar un botón no basta ni es lo que protege el dato.
+**`editableAhora(asignacion, convocatorias)` (`lib/plazos.ts`) es la única
+autoridad sobre si el coordinador puede tocar algo**: el estado
+(`esEditable`: solo `borrador` y `en_correccion`) **y el reloj** (SPEC-022):
+con la convocatoria cerrada un borrador se bloquea, y una corrección cuando
+vence su plazo. El store lo hace cumplir —`agregarDocente`,
+`actualizarDocente`, `eliminarDocente` y `enviar` no hacen nada fuera de
+plazo— y el servidor también (`revisarGuardado` recibe la convocatoria),
+así que ocultar un botón no basta ni es lo que protege el dato.
 
 Con SQL, el servidor lo vuelve a comprobar: `lib/transiciones.ts` exige que
 todo cambio de estado se explique con un evento nuevo de la bitácora, en el
@@ -206,7 +210,10 @@ a validar con la configuración vigente para mostrar cuáles *dejarían* de
 cumplirla —revalidando de verdad, no adivinando por qué campo se tocó— y el
 panel de `/admin/parametros` deja que el administrador elija a cuáles pedir
 corrección. **Nada se reabre solo**: un cambio puede ser a futuro y no deber
-tocar lo ya cerrado; esa decisión es suya.
+tocar lo ya cerrado; esa decisión es suya. Con la convocatoria cerrada
+puede reabrir también lo enviado, lo que está en revisión y el borrador
+bloqueado, aunque cumpla las reglas (`reabrible`, SPEC-022), y el
+coordinador ve qué parámetros cambiaron (`CambiosParametros`).
 
 ### 7. Los parámetros solo cambian con una novedad
 
@@ -275,6 +282,7 @@ app/admin/novedades              cambios con la convocatoria cerrada y a quién 
 app/admin/observaciones          cambios con la convocatoria abierta
 app/admin/datos                  respaldo: exportar e importar todo en JSON
 app/admin/datos/importar         asignaciones de periodos anteriores desde Excel (SPEC-017)
+app/admin/datos/docentes         el listado institucional de docentes (SPEC-021)
 app/admin/reportes               reportes; el cuadro resumen del consolidado
 app/criterios                    criterios de asignación del periodo (los dos roles)
 
@@ -282,6 +290,7 @@ lib/catalogos.ts     datos del formato oficial ← NO EDITAR A MANO
 lib/calculo.ts       motor de cálculo y validaciones ← PURO
 lib/tipos.ts         modelo de dominio, ciclo de vida y constructores
 lib/convocatoria.ts  plazos de entrega y su vencimiento
+lib/plazos.ts        si se puede editar ahora (estado + reloj) y qué se puede reabrir ← PURO
 lib/usar-plazo.ts    qué plazo rige y si se puede enviar (hook usePlazo)
 lib/impacto.ts       qué aprobadas rompe un cambio de parámetros
 lib/transiciones.ts  qué cambios admite el servidor en una asignación ← PURO
@@ -295,6 +304,10 @@ components/Graficas.tsx   gráficas SVG de los reportes (paleta validada, ver el
 lib/exportar-cuadro.ts   el cuadro en .xlsx (exceljs bajo demanda)
 lib/exportar-formato.ts  una asignación en el formato oficial .xlsx
 lib/exportar-comparativo.ts   el comparativo y la proyección en .xlsx
+lib/directorio.ts    leer y depurar el listado de docentes, completar la ficha ← PURO (SPEC-021)
+lib/servidor/directorio.ts   cargar el listado y buscar por cédula, código o nombre
+components/BuscadorDocente.tsx   la búsqueda en la ficha del docente
+db/cargar-listado-docentes.ts    la misma carga desde la consola
 lib/cursos-conocidos.ts   sugerencias y duplicado de cursos ← PURO (SPEC-019)
 lib/verificar-cursos.ts   prueba de lo anterior
 lib/verificar.ts     prueba contra los 45 docentes reales
@@ -362,6 +375,7 @@ npx tsx src/lib/verificar-transiciones.ts   # si tocaste el ciclo de vida o el s
 npx tsx src/lib/verificar-importacion.ts "<ASIGNACION_IS_2026_2PV3.xlsx>"   # si tocaste lib/importar/, transiciones o reportes
 npx tsx src/lib/servidor/verificar-sesion.ts   # si tocaste la sesión o lib/auth/
 npx tsx src/lib/verificar-cursos.ts   # si tocaste lib/cursos-conocidos.ts
+npx tsx src/lib/verificar-directorio.ts "<LISTADO DOCENTES CODIFICADO.xlsx>"   # si tocaste lib/directorio.ts
 DATABASE_URL=postgresql://…/asignacion_academica_prueba npx tsx src/lib/servidor/verificar-sql.ts   # si tocaste lib/servidor/ o los tipos
 ```
 

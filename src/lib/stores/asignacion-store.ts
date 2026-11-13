@@ -12,9 +12,10 @@ import {
   nuevoEvento,
   aplicarReglaDedicacion,
   cursosBase,
-  esEditable,
   esImportada,
 } from "@/lib/tipos";
+import { editableAhora, REABRIBLES } from "@/lib/plazos";
+import { useConfigStore } from "@/lib/stores/config-store";
 
 /** Quién ejecuta la acción; se graba en la bitácora tal cual. */
 export interface Autor {
@@ -90,10 +91,16 @@ export const useAsignacionStore = create<AsignacionStore>()(
        */
       const editarSiSePuede = (id: string, fn: (a: Asignacion) => Asignacion) => {
         const a = get().asignaciones.find((x) => x.id === id);
-        if (!a || !esEditable(a.estado)) return false;
+        if (!a || !editableYa(a)) return false;
         editar(id, fn);
         return true;
       };
+
+      /**
+       * El estado y el reloj (SPEC-022): con la convocatoria cerrada o el
+       * plazo de corrección vencido, ya no. El servidor aplica la misma regla.
+       */
+      const editableYa = (a: Asignacion) => editableAhora(a, useConfigStore.getState().convocatorias);
 
       /** Cambia de estado y deja constancia, en una sola operación. */
       const registrar = (
@@ -132,7 +139,7 @@ export const useAsignacionStore = create<AsignacionStore>()(
 
         agregarDocente: (asignacionId) => {
           const asignacion = get().asignaciones.find((a) => a.id === asignacionId);
-          if (!asignacion || !esEditable(asignacion.estado)) return null;
+          if (!asignacion || !editableYa(asignacion)) return null;
           const d = nuevoDocente(asignacion.programa);
           editar(asignacionId, (a) => ({ ...a, docentes: [...a.docentes, d] }));
           return d.id;
@@ -148,7 +155,7 @@ export const useAsignacionStore = create<AsignacionStore>()(
         eliminarDocente: (asignacionId, docenteId) => {
           const a = get().asignaciones.find((x) => x.id === asignacionId);
           const eliminado = a?.docentes.find((d) => d.id === docenteId);
-          if (!eliminado || !a || !esEditable(a.estado)) return null;
+          if (!eliminado || !a || !editableYa(a)) return null;
           editar(asignacionId, (x) => ({
             ...x,
             docentes: x.docentes.filter((d) => d.id !== docenteId),
@@ -160,7 +167,7 @@ export const useAsignacionStore = create<AsignacionStore>()(
 
         enviar: (id, autor) => {
           const a = get().asignaciones.find((x) => x.id === id);
-          if (!a || !esEditable(a.estado)) return;
+          if (!a || !editableYa(a)) return;
 
           // Un reenvío es el que sale de una corrección: se distingue en la
           // bitácora porque cuenta una historia distinta de la del primer envío.
@@ -240,8 +247,7 @@ export const useAsignacionStore = create<AsignacionStore>()(
 
         reabrirPorParametros: (id, autor, nota, plazo) => {
           const a = get().asignaciones.find((x) => x.id === id);
-          // Solo lo ya aprobado se reabre: lo demás sigue su curso normal.
-          if (!a || a.estado !== "aprobada" || esImportada(a)) return;
+          if (!a || !REABRIBLES.includes(a.estado) || esImportada(a)) return;
           registrar(
             id,
             "en_correccion",
@@ -266,7 +272,7 @@ export const useAsignacionStore = create<AsignacionStore>()(
           // N renders y dejarían estados intermedios visibles.
           set((s) => ({
             asignaciones: s.asignaciones.map((a) => {
-              if (!objetivo.has(a.id) || a.estado !== "aprobada" || esImportada(a)) return a;
+              if (!objetivo.has(a.id) || !REABRIBLES.includes(a.estado) || esImportada(a)) return a;
               reabiertas++;
               return {
                 ...a,

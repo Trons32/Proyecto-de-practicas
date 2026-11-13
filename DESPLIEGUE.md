@@ -70,6 +70,7 @@ y completar, como mínimo:
 | ----------------- | -------------------------------------------------------------- |
 | `DATABASE_URL`    | `postgresql://app_asignacion:<clave de la app>@<vps>:5432/asignacion_academica` (añadir `?sslmode=no-verify` si la base está en otra máquina con certificado propio) |
 | `SESION_SECRETO`  | `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` (también vale con el nombre `AUTH_SECRET`) |
+| `AUTH_URL`        | `https://planificacionacademica.cecar.edu.co` (sin barra final; también vale `NEXTAUTH_URL`). Sin ella, detrás del proxy, `/api/estado` responde 500 |
 | `AUTH_PROVEEDOR`  | `local` en el piloto; `api` cuando se conecte Aldea (ver "Del piloto a Aldea") |
 | `AUTH_API_URL`    | el endpoint que entregue sistemas                              |
 | `AUTH_API_TOKEN`  | si la API lo exige                                             |
@@ -134,6 +135,20 @@ Debe responder `200` con:
 Luego, en el navegador: entrar con un administrador y un coordinador de
 `public.usuario`, crear una asignación, cerrar sesión y volver a entrar desde
 otro equipo. Si la asignación sigue ahí, está guardando en la base.
+
+## Directorio de docentes (SPEC-021)
+
+**Orden:** la migración `20261113000000_directorio_docentes` va **antes**
+de desplegar el código que la usa (al entregar una asignación se escribe
+`docente.origen`):
+
+```bash
+DATABASE_URL="postgresql://<dueño>:<clave>@<vps>:5432/asignacion_academica" npx prisma migrate deploy
+```
+
+Luego el listado se carga desde `/admin/datos/docentes` (administrador), o
+desde la consola con `db/cargar-listado-docentes.ts` (primero sin
+`--aplicar`, para ver la vista previa).
 
 ## Del piloto a Aldea (SPEC-018)
 

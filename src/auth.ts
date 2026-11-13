@@ -32,7 +32,8 @@ export const { handlers, auth } = NextAuth({
   // así el despliegue existente no necesita una variable nueva.
   secret: process.env.AUTH_SECRET ?? process.env.SESION_SECRETO,
   // La VPS atiende detrás de un proxy inverso, que cambia el Host. Es seguro
-  // porque el login no redirige (`redirect: false` en el cliente).
+  // porque el login no redirige (`redirect: false` en el cliente). En
+  // producción además hace falta AUTH_URL: ver DESPLIEGUE.md.
   trustHost: true,
   session: { strategy: "jwt", maxAge: MAX_SESION_S },
   pages: { signIn: "/login" },

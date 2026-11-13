@@ -191,7 +191,7 @@ export function diferenciasParametros(antes: Parametros, despues: Parametros): C
 }
 
 /**
- * Las aprobadas que el cambio deja peor que antes.
+ * Las entregadas (aprobadas, enviadas o en revisión) que el cambio deja peor que antes.
  *
  * Se compara contra la configuración anterior —no contra la oficial— para
  * atribuirle al cambio solo lo que él introdujo: una asignación que ya

@@ -9,6 +9,9 @@ import { resumirAsignacion, legible, nombreFacultad } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import { usePlazo } from "@/lib/usar-plazo";
 import { esEditable, esImportada } from "@/lib/tipos";
+import { bloqueoPorPlazo } from "@/lib/plazos";
+import { useConfigStore } from "@/lib/stores/config-store";
+import CambiosParametros from "@/components/CambiosParametros";
 import Encabezado from "@/components/Encabezado";
 import ModalConfirmacion from "@/components/ModalConfirmacion";
 import AvisoPlazo from "@/components/AvisoPlazo";
@@ -47,7 +50,13 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
   const plazo = usePlazo(asignacion);
 
   const esCoordinador = usuario?.rol === "COORDINADOR";
-  const editable = Boolean(asignacion && esCoordinador && esEditable(asignacion.estado));
+  const convocatorias = useConfigStore((s) => s.convocatorias);
+  // El estado y el reloj (SPEC-022): cerrada la convocatoria o vencido el
+  // plazo de corrección, ya no se edita aunque el estado lo admita.
+  const bloqueo = asignacion && esEditable(asignacion.estado)
+    ? bloqueoPorPlazo(asignacion, convocatorias[asignacion.periodo])
+    : null;
+  const editable = Boolean(asignacion && esCoordinador && esEditable(asignacion.estado) && !bloqueo);
   const corrigiendo = asignacion?.estado === "en_correccion";
 
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
@@ -232,7 +241,19 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
-      {!editable && esCoordinador && (
+      <CambiosParametros asignacion={asignacion} />
+
+      {bloqueo && esCoordinador && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <FiLock className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-amber-900">Fuera de plazo</p>
+            <p className="mt-0.5 text-sm text-amber-900">{bloqueo}</p>
+          </div>
+        </div>
+      )}
+
+      {!editable && !bloqueo && esCoordinador && (
         <div className="mb-6 flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
           <FiLock className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" aria-hidden />
           <div className="min-w-0">

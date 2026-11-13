@@ -10,6 +10,8 @@
 import { useAsignacionStore, type Autor } from "./stores/asignacion-store";
 import { revisarBorrado, revisarGuardado } from "./transiciones";
 import { cursosBase, nuevoDocente, nuevoEvento, type Asignacion } from "./tipos";
+import type { Convocatoria } from "./convocatoria";
+import { bloqueoPorPlazo, reabrible } from "./plazos";
 
 let fallos = 0;
 const comprobar = (nombre: string, ok: boolean, detalle?: unknown) => {
@@ -28,7 +30,9 @@ const rechaza = (nombre: string, anterior: Asignacion | undefined, nueva: Asigna
 
 const coord: Autor = { nombres: "COORDINADOR", rol: "COORDINADOR" };
 const admin: Autor = { nombres: "ADMIN", rol: "ADMIN" };
-const plazo = "2026-11-30T04:59:59.999Z";
+// Lejano a propósito: la regla del reloj (SPEC-022) bloquea una corrección
+// vencida, y con una fecha cercana la prueba empezaría a fallar sola.
+const plazo = "2099-11-30T04:59:59.999Z";
 
 const store = useAsignacionStore.getState;
 /** Copia profunda: lo "guardado en la base" no puede moverse con el store. */
@@ -172,6 +176,39 @@ redondeo.docentes[0].evaluacionDocente = 4.26;
 const original = structuredClone(enviada);
 original.docentes[0].evaluacionDocente = 4.257;
 admite("el redondeo de la base no es una edición", original, redondeo);
+
+// ── El reloj (SPEC-022) ───────────────────────────────────────
+const abierta: Convocatoria = { periodo: "2026-2", apertura: "2026-07-01T05:00:00.000Z", limite: "2099-12-31T04:59:59.999Z", cerradaManualmente: false };
+const cerrada: Convocatoria = { ...abierta, cerradaManualmente: true };
+const porCerrada = { convocatoria: cerrada };
+const borradorConDocente = { ...base, docentes: [...base.docentes, nuevoDocente()] };
+comprobar("convocatoria abierta: el borrador se edita", revisarGuardado(base, borradorConDocente, undefined, { convocatoria: abierta }) === null);
+comprobar("convocatoria cerrada: el borrador ya no se edita", revisarGuardado(base, borradorConDocente, undefined, porCerrada) !== null);
+comprobar("convocatoria cerrada: tampoco se envía", revisarGuardado(base, enviada, undefined, porCerrada) !== null);
+comprobar("convocatoria abierta: se envía", revisarGuardado(base, enviada, undefined, { convocatoria: abierta }) === null);
+comprobar("convocatoria cerrada: el administrador sigue revisando", revisarGuardado(enviada, enRevision, undefined, porCerrada) === null);
+const despuesDelPlazo = Date.parse(plazo) + 60_000;
+comprobar("plazo de corrección vigente: se corrige", revisarGuardado(devuelta, corregida, undefined, { ahora: Date.parse(plazo) - 60_000 }) === null);
+comprobar("plazo de corrección vencido: ya no se corrige", revisarGuardado(devuelta, corregida, undefined, { ahora: despuesDelPlazo }) !== null);
+comprobar("plazo de corrección vencido: ni se reenvía", revisarGuardado(corregida, reenviada, undefined, { ahora: despuesDelPlazo }) !== null);
+comprobar("el bloqueo lo explica", (bloqueoPorPlazo(base, cerrada) ?? "").includes("solo lectura"));
+
+// Reabrir por parámetros con la convocatoria cerrada: también lo entregado
+// sin aprobar y lo que quedó sin entregar.
+const id3 = store().crearAsignacion({ periodo: "2026-2", facultad: "DERECHO_Y_CIENCIAS_POLÍTICAS", programa: "DERECHO" }, coord);
+store().agregarDocente(id3);
+store().enviar(id3, coord);
+const enviada3 = foto(id3);
+store().reabrirVarias([id3], admin, "Cambió el tope", plazo, crypto.randomUUID());
+admite("reabrir por parámetros una enviada", enviada3, foto(id3));
+comprobar("la enviada reabierta queda en corrección con plazo", foto(id3).estado === "en_correccion" && foto(id3).plazoCorreccion === plazo);
+const id4 = store().crearAsignacion({ periodo: "2026-2", facultad: "DERECHO_Y_CIENCIAS_POLÍTICAS", programa: "DERECHO" }, coord);
+const borrador4 = foto(id4);
+store().reabrirVarias([id4], admin, "Cambió el tope", plazo, crypto.randomUUID());
+admite("reabrir por parámetros un borrador bloqueado", borrador4, foto(id4));
+comprobar("un borrador abierto no se ofrece para reabrir", !reabrible(borrador4, { "2026-2": abierta }));
+comprobar("un borrador bloqueado por el cierre sí", reabrible(borrador4, { "2026-2": cerrada }));
+comprobar("una aprobada sí, aunque la convocatoria siga abierta", reabrible(aprobada, { "2026-2": abierta }));
 
 // ── Borrar ────────────────────────────────────────────────────
 comprobar("se borra un borrador sin entregar", revisarBorrado(base) === null);

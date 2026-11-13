@@ -7,10 +7,14 @@ import { useNovedadesStore } from "@/lib/stores/novedades-store";
 import { useSesionStore } from "@/lib/stores/sesion-store";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import { asignacionesAfectadas } from "@/lib/impacto";
+import { CONFIG_OFICIAL } from "@/lib/calculo";
+import { reabrible } from "@/lib/plazos";
+import { periodoDeReferencia } from "@/lib/novedades";
+import { useConfigStore } from "@/lib/stores/config-store";
 import { legible, nombreFacultad } from "@/lib/resumen";
 import { fechaLegible, finDelDia } from "@/lib/convocatoria";
 import Modal from "@/components/Modal";
-import { Boton, Campo, Entrada, Insignia } from "@/components/ui";
+import { Boton, Campo, Entrada, Insignia, InsigniaEstado } from "@/components/ui";
 import { sileo } from "@/lib/toast";
 import {
   FiAlertTriangle,
@@ -29,6 +33,12 @@ import {
  *
  * La decisión es suya, no automática: puede que un cambio sea a futuro y no
  * deba tocar lo ya aprobado. Por eso aquí nada se reabre solo.
+ *
+ * Con la convocatoria cerrada (SPEC-022) se puede reabrir también lo
+ * enviado, lo que está en revisión y el borrador que el cierre bloqueó, y
+ * no solo lo que la validación marca: un cambio puede pedir que una
+ * coordinación revise aunque su carga siga cuadrando. Por eso, debajo de
+ * las sugeridas, se puede elegir cualquier otra asignación del periodo.
  */
 export default function ImpactoParametros() {
   const asignaciones = useAsignacionStore((s) => s.asignaciones);
@@ -38,11 +48,22 @@ export default function ImpactoParametros() {
   const solicitarCorreccion = useNovedadesStore((s) => s.solicitarCorreccion);
   const usuario = useSesionStore((s) => s.sesion?.usuario ?? null);
   const config = useConfiguracion();
+  const convocatorias = useConfigStore((s) => s.convocatorias);
+  const referencia = useMemo(() => periodoDeReferencia(convocatorias), [convocatorias]);
 
   const afectadas = useMemo(
-    () => asignacionesAfectadas(asignaciones, config),
-    [asignaciones, config]
+    () => asignacionesAfectadas(asignaciones, config, CONFIG_OFICIAL, convocatorias),
+    [asignaciones, config, convocatorias]
   );
+  /** Las demás que se pueden reabrir en el periodo de la convocatoria cerrada. */
+  const otras = useMemo(() => {
+    if (!referencia.cerrada) return [];
+    const sugeridas = new Set(afectadas.map((x) => x.asignacion.id));
+    return asignaciones
+      .filter((a) => a.periodo === referencia.periodo && !sugeridas.has(a.id) && reabrible(a, convocatorias))
+      .sort((a, b) => a.programa.localeCompare(b.programa, "es"));
+  }, [asignaciones, afectadas, convocatorias, referencia]);
+  const [verOtras, setVerOtras] = useState(false);
 
   /** Las que el administrador marcó para reabrir. */
   const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
@@ -57,15 +78,14 @@ export default function ImpactoParametros() {
     return copia;
   };
 
-  if (!hidratado || afectadas.length === 0) {
+  if (!hidratado || (afectadas.length === 0 && otras.length === 0)) {
     // Sin nada roto no se pinta la sección: un panel que siempre dice "todo
     // bien" acaba siendo ruido que se deja de leer.
     return null;
   }
 
   const total = afectadas.length;
-  const seleccionadas = afectadas.filter((x) => marcadas.has(x.asignacion.id));
-  const todasMarcadas = marcadas.size === total;
+  const todasMarcadas = total > 0 && afectadas.every((x) => marcadas.has(x.asignacion.id));
 
   return (
     <section className="tarjeta tarjeta-sombra mb-6 overflow-hidden border-amber-200">
@@ -74,26 +94,38 @@ export default function ImpactoParametros() {
           <FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden />
           <div className="min-w-0">
             <h3 className="text-sm font-bold tracking-wide text-amber-900 uppercase">
-              Asignaciones afectadas por los parámetros actuales
+              Solicitar corrección por cambios en los parámetros
             </h3>
             <p className="mt-0.5 text-xs text-amber-900">
-              {total === 1
-                ? "1 asignación aprobada dejó de cumplir las reglas vigentes."
-                : `${total} asignaciones aprobadas dejaron de cumplir las reglas vigentes.`}{" "}
-              Decida cuáles deben corregirse.
+              {total === 0
+                ? "Ninguna asignación dejó de cumplir las reglas vigentes."
+                : total === 1
+                  ? "1 asignación entregada dejó de cumplir las reglas vigentes."
+                  : `${total} asignaciones entregadas dejaron de cumplir las reglas vigentes.`}{" "}
+              {otras.length > 0 && `Con la convocatoria ${referencia.periodo} cerrada, también puede elegir otras. `}
+              Las que marque se reabren con un plazo, y su coordinador verá qué parámetros cambiaron.
             </p>
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Boton
-            variante="secundario"
-            onClick={() =>
-              setMarcadas(todasMarcadas ? new Set() : new Set(afectadas.map((x) => x.asignacion.id)))
-            }
-          >
-            {todasMarcadas ? "Quitar selección" : "Seleccionar todas"}
-          </Boton>
+          {total > 0 && (
+            <Boton
+              variante="secundario"
+              onClick={() =>
+                setMarcadas((m) => {
+                  const copia = new Set(m);
+                  for (const x of afectadas) {
+                    if (todasMarcadas) copia.delete(x.asignacion.id);
+                    else copia.add(x.asignacion.id);
+                  }
+                  return copia;
+                })
+              }
+            >
+              {todasMarcadas ? "Quitar sugeridas" : "Marcar sugeridas"}
+            </Boton>
+          )}
           <Boton disabled={marcadas.size === 0} onClick={() => setConfirmando(true)}>
             <FiRefreshCw aria-hidden /> Solicitar corrección ({marcadas.size})
           </Boton>
@@ -129,6 +161,7 @@ export default function ImpactoParametros() {
                 </div>
 
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <InsigniaEstado estado={a.estado} />
                   <Insignia tono="rojo">
                     {erroresAhora} {erroresAhora === 1 ? "error" : "errores"}
                   </Insignia>
@@ -173,15 +206,61 @@ export default function ImpactoParametros() {
         })}
       </ul>
 
+      {otras.length > 0 && (
+        <div className="border-t border-[var(--color-borde)]">
+          <button
+            type="button"
+            onClick={() => setVerOtras((v) => !v)}
+            aria-expanded={verOtras}
+            className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left text-sm font-semibold text-[var(--color-texto)] hover:bg-black/[0.02]"
+          >
+            <span>
+              Elegir otras asignaciones del periodo {referencia.periodo} ({otras.length})
+              <span className="block text-xs font-normal text-[var(--color-texto-suave)]">
+                Siguen cumpliendo las reglas, pero puede pedirles que revisen.
+              </span>
+            </span>
+            <FiChevronDown className={`h-4 w-4 shrink-0 transition ${verOtras ? "rotate-180" : ""}`} aria-hidden />
+          </button>
+          {verOtras && (
+            <ul className="divide-y divide-[var(--color-borde)] border-t border-[var(--color-borde)]">
+              {otras.map((a) => (
+                <li key={a.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                  <input
+                    type="checkbox"
+                    checked={marcadas.has(a.id)}
+                    onChange={() => setMarcadas((m) => alternar(m, a.id))}
+                    aria-label={`Marcar ${legible(a.programa)} para corrección`}
+                    className="h-4 w-4 shrink-0 accent-cecar-600"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/asignacion/${a.id}`}
+                      className="block truncate text-sm font-semibold text-[var(--color-texto)] hover:text-cecar-700"
+                    >
+                      {legible(a.programa) || "Programa sin definir"}
+                    </Link>
+                    <p className="truncate text-xs text-[var(--color-texto-suave)]">
+                      {nombreFacultad(a.facultad) || "Facultad sin definir"} · periodo {a.periodo}
+                    </p>
+                  </div>
+                  <InsigniaEstado estado={a.estado} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <ModalReabrir
         abierto={confirmando}
-        cantidad={seleccionadas.length}
+        cantidad={marcadas.size}
         onCerrar={() => setConfirmando(false)}
         onConfirmar={(nota, plazo) => {
           if (!usuario) return;
           const autor: Autor = { nombres: usuario.nombres, rol: usuario.rol };
           const n = solicitarCorreccion(
-            seleccionadas.map((x) => x.asignacion.id),
+            [...marcadas],
             autor,
             nota,
             plazo

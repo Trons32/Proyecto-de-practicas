@@ -89,6 +89,23 @@ export default function RespaldoDatos() {
           </Link>
         </section>
 
+        <section className="tarjeta tarjeta-sombra p-5 lg:col-span-2">
+          <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">
+            Directorio de docentes
+          </h3>
+          <p className="mt-1 text-sm text-[var(--color-texto-suave)]">
+            Cargue el listado institucional de docentes (código, cédula y nombre). Con él, al
+            registrar un docente basta su cédula o su código para traer sus datos. Se puede volver a
+            cargar cada semestre: no duplica ni borra a nadie.
+          </p>
+          <Link
+            href="/admin/datos/docentes"
+            className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-cecar-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-cecar-700"
+          >
+            <FiUpload aria-hidden /> Cargar listado de docentes
+          </Link>
+        </section>
+
         <section className="tarjeta tarjeta-sombra p-5">
           <h3 className="text-sm font-bold tracking-wide text-cecar-800 uppercase">Importar un respaldo</h3>
           <p className="mt-1 text-sm text-[var(--color-texto-suave)]">

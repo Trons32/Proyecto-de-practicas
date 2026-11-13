@@ -9,13 +9,17 @@ import { calcularTotales, validarDocente } from "@/lib/calculo";
 import { legible } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import type { Asignacion, Docente } from "@/lib/tipos";
+import { bloqueoPorPlazo, editableAhora } from "@/lib/plazos";
+import { esEditable } from "@/lib/tipos";
+import type { Convocatoria } from "@/lib/convocatoria";
+import { useConfigStore } from "@/lib/stores/config-store";
 import FormularioDocente from "@/components/FormularioDocente";
 import ResumenHoras from "@/components/ResumenHoras";
 import Encabezado from "@/components/Encabezado";
 import Modal from "@/components/Modal";
 import NoEncontrada from "../../../NoEncontrada";
 import { Boton } from "@/components/ui";
-import { FiArrowLeft, FiCheckCircle, FiAlertCircle, FiAlertTriangle, FiClock } from "@/components/iconos";
+import { FiArrowLeft, FiCheckCircle, FiAlertCircle, FiAlertTriangle, FiClock, FiLock } from "@/components/iconos";
 
 export default function VistaDocente({
   params,
@@ -29,6 +33,7 @@ export default function VistaDocente({
   const hidratado = useAsignacionStore((s) => s.hidratado);
   const actualizarDocente = useAsignacionStore((s) => s.actualizarDocente);
   const esAdministrador = useSesionStore((s) => s.sesion?.usuario.rol === "ADMIN");
+  const convocatorias = useConfigStore((s) => s.convocatorias);
 
   const docente = asignacion?.docentes.find((d) => d.id === docenteId);
 
@@ -54,10 +59,20 @@ export default function VistaDocente({
 
   const posicion = asignacion.docentes.findIndex((d) => d.id === docenteId) + 1;
 
-  return <FichaDocente key={docente.id} asignacion={asignacion} docente={docente} posicion={posicion} config={config} actualizarDocente={actualizarDocente} router={router} soloLectura={esAdministrador} />;
+  return <FichaDocente key={docente.id} asignacion={asignacion} docente={docente} posicion={posicion} config={config} actualizarDocente={actualizarDocente} router={router} soloLectura={esAdministrador || !editableAhora(asignacion, convocatorias)} motivoLectura={esAdministrador ? null : motivoSoloLectura(asignacion, convocatorias)} />;
 }
 
-function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente, router, soloLectura }: {
+/** Por qué el coordinador ve la ficha sin poder editarla (SPEC-022). */
+function motivoSoloLectura(a: Asignacion, convocatorias: Record<string, Convocatoria>): string | null {
+  if (!esEditable(a.estado)) {
+    return a.estado === "aprobada"
+      ? "La asignación está aprobada: ya no admite cambios."
+      : "La asignación fue entregada y está en manos del administrador: no admite cambios mientras la revisa.";
+  }
+  return bloqueoPorPlazo(a, convocatorias[a.periodo]);
+}
+
+function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente, router, soloLectura, motivoLectura }: {
   asignacion: Asignacion;
   docente: Docente;
   posicion: number;
@@ -65,6 +80,7 @@ function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente
   actualizarDocente: (asignacionId: string, docente: Docente) => void;
   router: ReturnType<typeof useRouter>;
   soloLectura: boolean;
+  motivoLectura: string | null;
 }) {
   // El borrador vive solo en esta pantalla: escribir no persiste nada hasta
   // que el coordinador pulse Guardar sección. Así evita escrituras parciales
@@ -142,6 +158,13 @@ function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente
           </Boton>
         )}
       </Encabezado>
+
+      {motivoLectura && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <FiLock className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden />
+          <p className="text-sm text-amber-900"><strong>Solo lectura.</strong> {motivoLectura}</p>
+        </div>
+      )}
 
       {/* Formulario y dedicación semanal, lado a lado. */}
       <div className="grid gap-6 xl:grid-cols-[1fr_20rem] 2xl:grid-cols-[1fr_22rem]">
