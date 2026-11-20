@@ -11,7 +11,7 @@ import {
   MAX_ADMINISTRATIVAS,
   type ReglaDedicacion,
 } from "@/lib/catalogos";
-import { finDelDia, type Convocatoria } from "@/lib/convocatoria";
+import type { Convocatoria } from "@/lib/convocatoria";
 import type { Limites, Parametros, RolParametro } from "@/lib/novedades";
 
 export type { Limites };
@@ -37,7 +37,8 @@ interface ConfigStore {
   reemplazarParametros: (p: Parametros) => void;
 
   /** Abre el periodo o mueve su fecha límite. `limite` es AAAA-MM-DD. */
-  abrirConvocatoria: (periodo: string, limite: string) => void;
+  /** Apertura y cierre como instantes ISO, con su hora (SPEC-029). */
+  abrirConvocatoria: (periodo: string, apertura: string, limite: string) => void;
   /** Cierra antes de tiempo, o reabre lo cerrado a mano. */
   cerrarConvocatoria: (periodo: string) => void;
   reabrirConvocatoria: (periodo: string) => void;
@@ -70,23 +71,13 @@ export const useConfigStore = create<ConfigStore>()(
 
       reemplazarParametros: ({ reglas, roles, limites }) => set({ reglas, roles, limites }),
 
-      abrirConvocatoria: (periodo, limite) =>
-        set((s) => {
-          const previa = s.convocatorias[periodo];
-          return {
-            convocatorias: {
-              ...s.convocatorias,
-              [periodo]: {
-                periodo,
-                // Reabrir conserva la apertura original: mover la fecha
-                // límite no vuelve a empezar la convocatoria.
-                apertura: previa?.apertura ?? new Date().toISOString(),
-                limite: finDelDia(limite),
-                cerradaManualmente: false,
-              },
-            },
-          };
-        }),
+      abrirConvocatoria: (periodo, apertura, limite) =>
+        set((s) => ({
+          convocatorias: {
+            ...s.convocatorias,
+            [periodo]: { periodo, apertura, limite, cerradaManualmente: false },
+          },
+        })),
 
       cerrarConvocatoria: (periodo) =>
         set((s) =>

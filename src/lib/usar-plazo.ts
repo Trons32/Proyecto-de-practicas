@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useConfigStore } from "@/lib/stores/config-store";
-import { estadoConvocatoria, restante, type Convocatoria } from "@/lib/convocatoria";
+import { estadoConvocatoria, restante, sinConvocatoria, type Convocatoria } from "@/lib/convocatoria";
 import { esEditable, type Asignacion } from "@/lib/tipos";
 
 export interface Plazo {
@@ -77,7 +77,7 @@ export function usePlazo(asignacion: Asignacion | null | undefined): Plazo {
         puedeEnviar: false,
         motivo: convocatoria
           ? "La convocatoria de este periodo aún no abre."
-          : "El administrador todavía no ha abierto la convocatoria de este periodo.",
+          : sinConvocatoria(asignacion.periodo, convocatorias),
       };
     }
 

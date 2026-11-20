@@ -8,6 +8,7 @@ import { resumirAsignacion, separarEnProgreso, desde, legible, nombreFacultad } 
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import { esImportada } from "@/lib/tipos";
 import Encabezado from "@/components/Encabezado";
+import RelojConvocatoria from "@/components/RelojConvocatoria";
 import { Boton, TarjetaStat, Insignia, InsigniaEstado } from "@/components/ui";
 import {
   FiPlus,
@@ -66,6 +67,9 @@ export default function Inicio() {
           </Boton>
         </Link>
       </Encabezado>
+
+      {/* ---------------- Cuándo cierra la entrega (SPEC-029) ---------------- */}
+      {esCoordinador && <RelojConvocatoria asignacion={enProgreso?.a ?? null} />}
 
       {/* ---------------- Totales globales ---------------- */}
       <section className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">

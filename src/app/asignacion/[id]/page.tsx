@@ -278,9 +278,7 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
         <AvisoPlazo
           limite={plazo.limite}
           titulo={
-            corrigiendo
-              ? "Plazo para enviar las correcciones"
-              : `Entrega de asignaciones · periodo ${asignacion.periodo}`
+            corrigiendo ? `Corrección · ${asignacion.periodo}` : `Entrega · ${asignacion.periodo}`
           }
           detalle={plazo.motivo ?? undefined}
         />

@@ -10,7 +10,7 @@
 import { useAsignacionStore, type Autor } from "./stores/asignacion-store";
 import { revisarBorrado, revisarGuardado } from "./transiciones";
 import { cursosBase, nuevoDocente, nuevoEvento, type Asignacion } from "./tipos";
-import type { Convocatoria } from "./convocatoria";
+import { cuentaRegresiva, estadoConvocatoria, faltaLegible, finDelDia, instanteLocal, partesFechaHora, urgenciaDe, type Convocatoria } from "./convocatoria";
 import { calcularTotales, validarDocente } from "./calculo";
 import { asignacionAnterior, filasVariacion, variacionesPendientes } from "./variaciones";
 import { bloqueoPorPlazo, edicionAdminAbierta, reabrible } from "./plazos";
@@ -294,6 +294,23 @@ const cambioA = cambioV.find((v) => v.tipo === "cambio");
 comprobar("detecta el cambio de dedicación y el rol que asume", Boolean(cambioA?.detalle?.includes("→") && cambioA.detalle.includes("Asume")), cambioA);
 comprobar("propone el motivo del cambio", cambioA?.motivo === "CAMBIO_DEDICACION");
 comprobar("entregada, los salientes no se editan", revisarGuardado(entregadaE, { ...entregadaE, variaciones: filasV }, sesionCoord) !== null);
+
+// ── Apertura y cierre con hora (SPEC-029) ─────────────────────
+const cierre = instanteLocal("2026-11-25", "23:59");
+comprobar("11:59 p. m. vence igual que el fin del día de antes", cierre === finDelDia("2026-11-25"));
+comprobar("la fecha y la hora se leen de vuelta", JSON.stringify(partesFechaHora(instanteLocal("2026-11-25", "14:30"))) === JSON.stringify({ fecha: "2026-11-25", hora: "14:30" }));
+const conv: Convocatoria = { periodo: "2027-1", apertura: instanteLocal("2026-11-20", "08:00"), limite: instanteLocal("2026-11-25", "17:00"), cerradaManualmente: false };
+comprobar("antes de la hora de apertura no está abierta", estadoConvocatoria(conv, Date.parse(instanteLocal("2026-11-20", "07:00"))) === "sin_abrir");
+comprobar("después de la hora de cierre está cerrada", estadoConvocatoria(conv, Date.parse(conv.limite) + 1) === "cerrada");
+const hace = (horas: number) => Date.parse(conv.limite) - horas * 3_600_000;
+comprobar("cuenta regresiva en días, horas y minutos", JSON.stringify(cuentaRegresiva(conv.limite, hace(26.5))) === JSON.stringify({ dias: 1, horas: 2, minutos: 30 }));
+comprobar("días de calendario: faltan 3 días", faltaLegible(conv.limite, Date.parse(instanteLocal("2026-11-22", "18:00"))) === "Faltan 3 días");
+comprobar("el día antes: falta 1 día", faltaLegible(conv.limite, Date.parse(instanteLocal("2026-11-24", "20:00"))) === "Falta 1 día");
+comprobar("el mismo día dice la hora", faltaLegible(conv.limite, Date.parse(instanteLocal("2026-11-25", "09:00"))).startsWith("Se cierra hoy a las"));
+comprobar("urgencia: más de tres días es tranquilo", urgenciaDe(conv.limite, hace(100)) === "tranquilo");
+comprobar("urgencia: a menos de un día es el último día", urgenciaDe(conv.limite, hace(20)) === "ultimo_dia");
+comprobar("urgencia: a menos de tres horas, últimas horas", urgenciaDe(conv.limite, hace(2)) === "ultimas_horas");
+comprobar("urgencia: pasado el cierre, vencido", urgenciaDe(conv.limite, hace(-1)) === "vencido");
 
 // ── Borrar ────────────────────────────────────────────────────
 comprobar("se borra un borrador sin entregar", revisarBorrado(base) === null);

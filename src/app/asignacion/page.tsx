@@ -14,6 +14,8 @@ import {
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import { esImportada, type Asignacion } from "@/lib/tipos";
 import Encabezado from "@/components/Encabezado";
+import RelojConvocatoria from "@/components/RelojConvocatoria";
+import { useSesionStore } from "@/lib/stores/sesion-store";
 import { Boton, Insignia, InsigniaEstado, Paginacion } from "@/components/ui";
 import { FiPlus, FiFileText, FiEdit3, FiArrowRight } from "@/components/iconos";
 
@@ -27,6 +29,7 @@ interface Fila {
 
 export default function ListaAsignaciones() {
   const asignaciones = useAsignacionStore((s) => s.asignaciones);
+  const esCoordinador = useSesionStore((s) => s.sesion?.usuario.rol === "COORDINADOR");
   const hidratado = useAsignacionStore((s) => s.hidratado);
   const config = useConfiguracion();
 
@@ -90,6 +93,8 @@ export default function ListaAsignaciones() {
         </section>
       ) : (
         <div className="space-y-8">
+          {/* El mismo aviso del inicio (SPEC-029): el plazo manda sobre lo demás. */}
+          {esCoordinador && <RelojConvocatoria asignacion={enProgreso?.a ?? null} />}
           {enProgreso && <EnCurso fila={enProgreso} />}
 
           <section>

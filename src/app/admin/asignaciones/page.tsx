@@ -11,7 +11,9 @@ import {
   estadoConvocatoria,
   fechaLegible,
   plazoLegible,
-  comoFechaInput,
+  partesFechaHora,
+  instanteLocal,
+  momentoLegible,
   finDelDia,
 } from "@/lib/convocatoria";
 import { esImportada, periodosAsignables, type Asignacion, type EstadoAsignacion } from "@/lib/tipos";
@@ -319,38 +321,46 @@ function Convocatorias({
   onReabrir,
 }: {
   convocatorias: Record<string, import("@/lib/convocatoria").Convocatoria>;
-  onAbrir: (periodo: string, limite: string) => void;
+  onAbrir: (periodo: string, apertura: string, limite: string) => void;
   onCerrar: (periodo: string) => void;
   onReabrir: (periodo: string) => void;
 }) {
   const periodos = periodosAsignables();
   const [editando, setEditando] = useState<string | null>(null);
-  const [fecha, setFecha] = useState("");
+  // Apertura y cierre con día y hora (SPEC-029). Una nueva abre ya y cierra
+  // a las 11:59 p. m. si no se dice otra cosa: es lo que se entiende por
+  // «hasta el viernes».
+  const [abre, setAbre] = useState({ fecha: "", hora: "" });
+  const [cierra, setCierra] = useState({ fecha: "", hora: "23:59" });
 
   const empezar = (periodo: string) => {
     const previa = convocatorias[periodo];
-    setFecha(previa ? comoFechaInput(previa.limite) : "");
+    setAbre(partesFechaHora(previa?.apertura ?? new Date().toISOString()));
+    setCierra(previa ? partesFechaHora(previa.limite) : { fecha: "", hora: "23:59" });
     setEditando(periodo);
   };
 
   const guardar = () => {
     if (!editando) return;
-    if (!fecha) {
-      sileo.error({ title: "Falta la fecha", description: "Indique hasta cuándo se puede entregar." });
+    if (!abre.fecha || !abre.hora || !cierra.fecha || !cierra.hora) {
+      sileo.error({ title: "Faltan datos", description: "Indique día y hora de apertura y de cierre." });
       return;
     }
-    // Una fecha ya pasada dejaría la convocatoria cerrada al nacer.
-    if (new Date(finDelDia(fecha)).getTime() <= Date.now()) {
-      sileo.error({
-        title: "La fecha ya pasó",
-        description: "Elija una fecha posterior a hoy.",
-      });
+    const apertura = instanteLocal(abre.fecha, abre.hora);
+    const limite = instanteLocal(cierra.fecha, cierra.hora);
+    if (new Date(limite).getTime() <= new Date(apertura).getTime()) {
+      sileo.error({ title: "El cierre va antes de la apertura", description: "El cierre tiene que ser posterior a la apertura." });
       return;
     }
-    onAbrir(editando, fecha);
+    // Un cierre ya pasado dejaría la convocatoria cerrada al nacer.
+    if (new Date(limite).getTime() <= Date.now()) {
+      sileo.error({ title: "El cierre ya pasó", description: "Elija un día y una hora posteriores a este momento." });
+      return;
+    }
+    onAbrir(editando, apertura, limite);
     sileo.success({
-      title: "Convocatoria abierta",
-      description: `${editando} · hasta el ${fechaLegible(finDelDia(fecha))}`,
+      title: new Date(apertura).getTime() > Date.now() ? "Convocatoria programada" : "Convocatoria abierta",
+      description: `${editando} · abre ${momentoLegible(apertura)} · cierra ${momentoLegible(limite)}`,
     });
     setEditando(null);
   };
@@ -376,10 +386,13 @@ function Convocatorias({
                     </span>
                   </h3>
                   {c ? (
-                    <p className="mt-1 text-xs text-[var(--color-texto-suave)]">
-                      Hasta el {fechaLegible(c.limite)}
-                      {estado === "abierta" && ` · ${plazoLegible(c.limite)}`}
-                    </p>
+                    <div className="mt-1 space-y-0.5 text-xs text-[var(--color-texto-suave)]">
+                      <p>Abre: {momentoLegible(c.apertura)}</p>
+                      <p>
+                        Cierra: {momentoLegible(c.limite)}
+                        {estado === "abierta" && ` · ${plazoLegible(c.limite)}`}
+                      </p>
+                    </div>
                   ) : (
                     <p className="mt-1 text-xs text-[var(--color-texto-suave)]">
                       Sin convocatoria: los coordinadores no pueden entregar.
@@ -396,7 +409,7 @@ function Convocatorias({
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <Boton variante="secundario" onClick={() => empezar(periodo)}>
-                  <FiClock aria-hidden /> {c ? "Cambiar fecha" : "Abrir convocatoria"}
+                  <FiClock aria-hidden /> {c ? "Cambiar fechas" : "Abrir convocatoria"}
                 </Boton>
 
                 {c && estado === "abierta" && (
@@ -422,17 +435,17 @@ function Convocatorias({
         titulo={`Convocatoria ${editando ?? ""}`}
         tamano="sm"
       >
-        <Campo
-          etiqueta="Fecha límite de entrega"
-          requerido
-          ayuda="Los coordinadores podrán entregar durante todo ese día."
-        >
-          <Entrada
-            type="date"
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-            data-foco-inicial
-          />
+        <Campo etiqueta="Apertura" requerido ayuda="Desde este momento los coordinadores pueden entregar.">
+          <div className="grid grid-cols-[1fr_8rem] gap-2">
+            <Entrada type="date" aria-label="Día de apertura" value={abre.fecha} onChange={(e) => setAbre({ ...abre, fecha: e.target.value })} />
+            <Entrada type="time" aria-label="Hora de apertura" value={abre.hora} onChange={(e) => setAbre({ ...abre, hora: e.target.value })} />
+          </div>
+        </Campo>
+        <Campo etiqueta="Cierre" requerido className="mt-4" ayuda="Hasta este momento se admiten entregas. Los coordinadores ven la cuenta regresiva.">
+          <div className="grid grid-cols-[1fr_8rem] gap-2">
+            <Entrada type="date" aria-label="Día de cierre" value={cierra.fecha} onChange={(e) => setCierra({ ...cierra, fecha: e.target.value })} data-foco-inicial />
+            <Entrada type="time" aria-label="Hora de cierre" value={cierra.hora} onChange={(e) => setCierra({ ...cierra, hora: e.target.value })} />
+          </div>
         </Campo>
 
         <div className="mt-6 flex gap-3">
