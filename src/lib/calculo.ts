@@ -129,6 +129,20 @@ export function calcularTotales(d: Docente, config: Configuracion = CONFIG_OFICI
 
 export type Severidad = "error" | "aviso";
 
+/**
+ * ¿El docente cuadra con su dedicación? Tiene que dar las horas exactas:
+ * pasarse y quedarse corto son errores (SPEC-024). null si no hay tope.
+ */
+export const descuadreHoras = (t: Pick<Totales, "totalSemanal" | "maxHoras">): number | null =>
+  t.maxHoras === null || t.totalSemanal === t.maxHoras ? null : t.totalSemanal - t.maxHoras;
+
+/**
+ * La excepción del administrador vale solo para el total que autorizó.
+ * Se compara redondeado a un decimal, como lo guarda la base.
+ */
+export const excepcionVigente = (d: Docente, t: Pick<Totales, "totalSemanal">): boolean =>
+  Boolean(d.excepcionHoras) && Math.round(d.excepcionHoras!.horas * 10) === Math.round(t.totalSemanal * 10);
+
 export interface Hallazgo {
   campo: string;
   mensaje: string;
@@ -193,23 +207,25 @@ export function validarDocente(d: Docente, t: Totales): Hallazgo[] {
     h.push({ campo: "nombres", mensaje: "El nombre debe ir en mayúsculas.", severidad: "aviso" });
   }
 
-  if (t.maxHoras !== null && t.totalSemanal > t.maxHoras) {
+  // Las horas tienen que cuadrar con la dedicación, por arriba y por abajo
+  // (SPEC-024). Solo el administrador puede dejar pasar un descuadre, con
+  // motivo: entonces queda como aviso, para que se siga viendo.
+  const descuadre = descuadreHoras(t);
+  if (descuadre !== null && t.maxHoras !== null && t.totalSemanal > 0) {
     const ded = d.dedicacion.replace(/_/g, " ").toLowerCase();
-    h.push({
-      campo: "totalSemanal",
-      mensaje:
-        "El total (" + t.totalSemanal + " h) supera las " + t.maxHoras + " h de " + ded + ".",
-      severidad: "error",
-    });
-  }
-
-  if (t.maxHoras !== null && t.totalSemanal > 0 && t.totalSemanal < t.maxHoras) {
-    h.push({
-      campo: "totalSemanal",
-      mensaje:
-        "Faltan " + (t.maxHoras - t.totalSemanal) + " h para completar las " + t.maxHoras + " h.",
-      severidad: "aviso",
-    });
+    const texto =
+      descuadre > 0
+        ? "El total (" + t.totalSemanal + " h) supera las " + t.maxHoras + " h de " + ded + "."
+        : "Faltan " + -descuadre + " h para completar las " + t.maxHoras + " h de " + ded + ".";
+    h.push(
+      excepcionVigente(d, t)
+        ? {
+            campo: "totalSemanal",
+            mensaje: texto + " Excepción autorizada por " + d.excepcionHoras!.autor + ": " + d.excepcionHoras!.motivo,
+            severidad: "aviso",
+          }
+        : { campo: "totalSemanal", mensaje: texto, severidad: "error" }
+    );
   }
 
   d.descargas.forEach((x, i) => {

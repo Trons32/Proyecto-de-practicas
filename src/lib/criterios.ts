@@ -7,8 +7,10 @@
  * parametrización; si el documento y el formato discrepan, manda el formato
  * hasta que el administrador cambie el parámetro (con su novedad).
  *
- * Cada semestre llega un documento nuevo: se reemplaza este archivo entero y
- * se cambia `PERIODO_CRITERIOS`. Las celdas vacías del original van como "".
+ * Desde SPEC-025 los criterios viven en la base, por periodo, y los edita
+ * el administrador desde /admin/criterios. Este archivo es solo la versión
+ * inicial: la que se muestra mientras no se ha publicado ninguna. Las
+ * celdas vacías del original van como "".
  */
 
 export const PERIODO_CRITERIOS = "2027-1";
@@ -28,8 +30,22 @@ export type Bloque =
       pie?: string;
     };
 
+/**
+ * A qué modalidad pertenece una sección (SPEC-025). «general» aplica a
+ * todas: fundamentación, criterios comunes, coexistencia, referencias.
+ */
+export type Modalidad = "general" | "presencial" | "distancia" | "virtual";
+
+export const MODALIDADES: { valor: Modalidad; texto: string }[] = [
+  { valor: "general", texto: "General" },
+  { valor: "presencial", texto: "Presencial" },
+  { valor: "distancia", texto: "Distancia tradicional" },
+  { valor: "virtual", texto: "Virtual" },
+];
+
 export type SeccionCriterios = {
   id: string;
+  modalidad: Modalidad;
   numero: string;
   titulo: string;
   bloques: Bloque[];
@@ -38,6 +54,7 @@ export type SeccionCriterios = {
 export const CRITERIOS: SeccionCriterios[] = [
   {
     id: "fundamentacion",
+    modalidad: "general",
     numero: "",
     titulo: "Fundamentación",
     bloques: [
@@ -60,6 +77,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "generales",
+    modalidad: "general",
     numero: "I",
     titulo: "Criterios generales",
     bloques: [
@@ -131,6 +149,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "tiempo-completo",
+    modalidad: "presencial",
     numero: "II.1",
     titulo: "Docentes de tiempo completo",
     bloques: [
@@ -161,6 +180,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "investigadores",
+    modalidad: "presencial",
     numero: "II.1.1",
     titulo: "Docentes investigadores",
     bloques: [
@@ -229,6 +249,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "academico-administrativos",
+    modalidad: "presencial",
     numero: "II.1.2",
     titulo: "Funciones académico-administrativas",
     bloques: [
@@ -248,6 +269,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "medio-tiempo",
+    modalidad: "presencial",
     numero: "II.1.3",
     titulo: "Docentes de medio tiempo",
     bloques: [
@@ -276,6 +298,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "roles",
+    modalidad: "presencial",
     numero: "II.2",
     titulo: "Asignación según rol",
     bloques: [
@@ -383,6 +406,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "catedraticos",
+    modalidad: "presencial",
     numero: "II.3",
     titulo: "Docentes catedráticos",
     bloques: [
@@ -405,6 +429,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "tutores-distancia",
+    modalidad: "distancia",
     numero: "II.4.1",
     titulo: "Tutores a distancia tradicional",
     bloques: [
@@ -439,6 +464,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "tutores-virtual",
+    modalidad: "virtual",
     numero: "II.4.2",
     titulo: "Tutores y docentes virtuales",
     bloques: [
@@ -498,6 +524,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "coexistencia",
+    modalidad: "general",
     numero: "III",
     titulo: "Coexistencia de contratos",
     bloques: [
@@ -510,6 +537,7 @@ export const CRITERIOS: SeccionCriterios[] = [
   },
   {
     id: "referencias",
+    modalidad: "general",
     numero: "",
     titulo: "Referencias",
     bloques: [

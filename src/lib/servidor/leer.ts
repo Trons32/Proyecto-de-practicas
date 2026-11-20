@@ -11,6 +11,7 @@ import type { Convocatoria } from "../convocatoria";
 import type { Limites, Novedad, RolParametro } from "../novedades";
 import type { Asignacion, Docente, Evento } from "../tipos";
 import { bd, type Cliente } from "./bd";
+import type { Prisma } from "@/generated/prisma/client";
 
 const s = (v: unknown) => (v === null || v === undefined ? "" : String(v));
 /** Prisma entrega NUMERIC como Decimal; `Number()` lo convierte. */
@@ -26,10 +27,10 @@ const opcionales = <T extends object>(o: T): Partial<T> =>
  * contra lo que hay (ver `escribir.ts`).
  */
 export async function leerAsignaciones(
-  { ids, cliente = bd() }: { ids?: string[]; cliente?: Cliente } = {}
+  { ids, cliente = bd(), donde }: { ids?: string[]; cliente?: Cliente; donde?: Prisma.asignacionWhereInput } = {}
 ): Promise<{ asignaciones: Asignacion[] }> {
   const filas = await cliente.asignacion.findMany({
-    where: ids ? { id: { in: ids } } : undefined,
+    where: { ...(ids ? { id: { in: ids } } : {}), ...(donde ?? {}) },
     orderBy: { creada: "desc" },
     include: {
       programa: true,
@@ -41,6 +42,7 @@ export async function leerAsignaciones(
       // eventos del mismo milisegundo.
       evento_asignacion: { orderBy: [{ fecha: "asc" }, { secuencia: "asc" }] },
       linea_base_curso: { orderBy: { orden: "asc" } },
+      variacion_docente: { orderBy: { orden: "asc" } },
     },
   });
 
@@ -65,6 +67,16 @@ export async function leerAsignaciones(
       preparacion: Number(d.preparacion),
       atencion: Number(d.atencion),
       comunidades: Number(d.comunidades),
+      ...(d.excepcion_motivo && d.excepcion_autor && d.excepcion_fecha && d.excepcion_horas !== null
+        ? {
+            excepcionHoras: {
+              motivo: d.excepcion_motivo,
+              autor: d.excepcion_autor,
+              fecha: d.excepcion_fecha.toISOString(),
+              horas: Number(d.excepcion_horas),
+            },
+          }
+        : {}),
       descargas: d.actividad.filter((x) => x.clase === "DESCARGA").map(actividad),
       administrativas: d.actividad.filter((x) => x.clase === "ADMINISTRATIVA").map(actividad),
       cursos: d.curso_asignado.map((k) => ({
@@ -110,6 +122,22 @@ export async function leerAsignaciones(
       actualizada: iso(a.actualizada),
       version: a.version,
       ...opcionales({ plazoCorreccion: iso(a.plazo_correccion) }),
+      ...(a.variacion_docente.length
+        ? {
+            variaciones: a.variacion_docente.map((v) => ({
+              id: v.id,
+              tipo: v.tipo as "saliente" | "nuevo" | "cambio",
+              documento: s(v.documento),
+              nombres: v.nombres,
+              dedicacion: s(v.dedicacion),
+              nota: s(v.nota),
+              ...(v.reemplaza_a ? { reemplazaA: v.reemplaza_a } : {}),
+              ...(v.manual ? { manual: true } : {}),
+              ...(v.motivo ? { motivo: v.motivo } : {}),
+              ...(v.detalle ? { detalle: v.detalle } : {}),
+            })),
+          }
+        : {}),
       ...(a.linea_base_fecha
         ? {
             lineaBase: {

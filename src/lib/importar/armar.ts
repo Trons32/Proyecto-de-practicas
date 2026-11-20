@@ -132,7 +132,7 @@ function aLista(v: string, lista: string[]): string {
 const LARGO: Partial<Record<keyof Docente | keyof Curso, number>> = {
   documento: 15, nombres: 150, nivelFormacion: 30, categoriaMinciencias: 20, sectorEjerce: 60,
   categoria: 40, sede: 40, codigoPrograma: 10, nombrePrograma: 120, codigoPensum: 20, codigoCurso: 20,
-  nombreCurso: 150, grupo: 5, jornada: 15, modalidad: 15,
+  nombreCurso: 150, grupo: 10, jornada: 15, modalidad: 15,
 };
 
 /* ------------------------------------------------------------------

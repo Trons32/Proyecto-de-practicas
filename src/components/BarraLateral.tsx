@@ -45,7 +45,7 @@ const MENU: Record<Rol, Enlace[]> = {
     { icono: FiFileText, texto: "Asignaciones", href: "/asignacion" },
     { icono: FiUsers, texto: "Docentes" },
     { icono: FiBookOpen, texto: "Criterios", href: "/criterios" },
-    { icono: FiBarChart2, texto: "Reportes" },
+    { icono: FiBarChart2, texto: "Reportes", href: "/reportes" },
   ],
   ADMIN: [
     { icono: FiGrid, texto: "Panel", href: "/admin" },

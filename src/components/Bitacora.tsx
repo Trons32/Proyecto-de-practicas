@@ -20,6 +20,7 @@ const EVENTOS: Record<TipoEvento, { texto: string; punto: string }> = {
     texto: "reabrió la asignación por un cambio de parámetros",
     punto: "bg-amber-500",
   },
+  editada_por_admin: { texto: "corrigió la asignación entregada", punto: "bg-violet-500" },
   importada: { texto: "importó la asignación desde un Excel de un periodo anterior", punto: "bg-cecar-600" },
 };
 

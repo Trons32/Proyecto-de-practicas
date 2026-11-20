@@ -9,15 +9,19 @@ import { resumirAsignacion, legible, nombreFacultad } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import { usePlazo } from "@/lib/usar-plazo";
 import { esEditable, esImportada } from "@/lib/tipos";
-import { bloqueoPorPlazo } from "@/lib/plazos";
+import { bloqueoPorPlazo, edicionAdminAbierta, EDITABLES_POR_ADMIN } from "@/lib/plazos";
 import { useConfigStore } from "@/lib/stores/config-store";
 import CambiosParametros from "@/components/CambiosParametros";
 import Encabezado from "@/components/Encabezado";
 import ModalConfirmacion from "@/components/ModalConfirmacion";
+import Modal from "@/components/Modal";
 import AvisoPlazo from "@/components/AvisoPlazo";
 import Bitacora from "@/components/Bitacora";
+import VariacionesDocentes from "@/components/VariacionesDocentes";
+import { asignacionAnterior, filasVariacion, variacionesPendientes } from "@/lib/variaciones";
+import { periodoAnterior } from "@/lib/tipos";
 import NoEncontrada from "../NoEncontrada";
-import { Boton, TarjetaStat, Insignia, InsigniaEstado } from "@/components/ui";
+import { Boton, Campo, TarjetaStat, Insignia, InsigniaEstado } from "@/components/ui";
 import { sileo } from "@/lib/toast";
 import { libroFormatoOficial, nombreArchivoFormato } from "@/lib/exportar-formato";
 import {
@@ -33,6 +37,7 @@ import {
   FiBookOpen,
   FiLock,
   FiDownload,
+  FiEdit3,
 } from "@/components/iconos";
 
 export default function VistaAsignacion({ params }: { params: Promise<{ id: string }> }) {
@@ -44,6 +49,9 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
   const agregarDocente = useAsignacionStore((s) => s.agregarDocente);
   const eliminarDocente = useAsignacionStore((s) => s.eliminarDocente);
   const enviar = useAsignacionStore((s) => s.enviar);
+  const abrirEdicionAdmin = useAsignacionStore((s) => s.abrirEdicionAdmin);
+  const guardarVariaciones = useAsignacionStore((s) => s.guardarVariaciones);
+  const todas = useAsignacionStore((s) => s.asignaciones);
   const usuario = useSesionStore((s) => s.sesion?.usuario ?? null);
 
   const config = useConfiguracion();
@@ -58,9 +66,26 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
     : null;
   const editable = Boolean(asignacion && esCoordinador && esEditable(asignacion.estado) && !bloqueo);
   const corrigiendo = asignacion?.estado === "en_correccion";
+  // El administrador corrige lo entregado con la edición abierta (SPEC-023);
+  // enviar sigue siendo solo del coordinador.
+  const esAdmin = usuario?.rol === "ADMIN";
+  const edicionAdmin = Boolean(asignacion && esAdmin && edicionAdminAbierta(asignacion));
+  const puedeAbrirEdicion = Boolean(
+    asignacion && esAdmin && !edicionAdmin && !esImportada(asignacion) && EDITABLES_POR_ADMIN.includes(asignacion.estado)
+  );
+  const editaDocentes = editable || edicionAdmin;
+  const [pidiendoMotivo, setPidiendoMotivo] = useState(false);
 
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
   const [descargando, setDescargando] = useState(false);
+
+  // Salientes y nuevos (SPEC-027): se comparan con el periodo anterior.
+  const anterior = useMemo(() => (asignacion ? asignacionAnterior(asignacion, todas) : undefined), [asignacion, todas]);
+  const variaciones = useMemo(() => {
+    if (!asignacion) return [];
+    const nombres = new Map(config.roles.map((r) => [r.id, r.nombre]));
+    return filasVariacion(asignacion, anterior, (id) => nombres.get(id) ?? `Rol ${id}`);
+  }, [asignacion, anterior, config]);
 
   const resumen = useMemo(
     () => (asignacion ? resumirAsignacion(asignacion, config) : null),
@@ -93,13 +118,13 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
   if (!asignacion || !resumen) return <NoEncontrada />;
 
   const nuevoDocente = () => {
-    if (!editable) return;
+    if (!editaDocentes) return;
     const docenteId = agregarDocente(asignacion.id);
     if (docenteId) router.push(`/asignacion/${asignacion.id}/docente/${docenteId}`);
   };
 
   const confirmarEliminar = () => {
-    if (!editable) return;
+    if (!editaDocentes) return;
     if (!porEliminar) return;
     const eliminado = eliminarDocente(asignacion.id, porEliminar);
     setPorEliminar(null);
@@ -114,13 +139,24 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
     setConfirmandoEnvio(false);
     if (!usuario) return;
 
-    // Aquí irá el POST al API route que persiste en PostgreSQL.
+    // La lista se calcula en vivo; al entregar queda la foto de ese momento.
+    guardarVariaciones(asignacion.id, variaciones);
     enviar(asignacion.id, { nombres: usuario.nombres, rol: usuario.rol });
     sileo.success({
       title: corrigiendo ? "Correcciones enviadas" : "Asignación enviada",
       description:
         `${resumen.totalDocentes} ${resumen.totalDocentes === 1 ? "docente" : "docentes"} · ` +
         `${resumen.horasTotales} horas semanales. Queda en manos del administrador.`,
+    });
+  };
+
+  const confirmarEdicion = (motivo: string) => {
+    setPidiendoMotivo(false);
+    if (!usuario) return;
+    abrirEdicionAdmin(asignacion.id, { nombres: usuario.nombres, rol: usuario.rol }, motivo);
+    sileo.success({
+      title: "Edición abierta",
+      description: "Los cambios quedan a su nombre en el historial. Aprobar o devolver la cierra.",
     });
   };
 
@@ -166,6 +202,15 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
       });
       return;
     }
+    const sinMotivo = variacionesPendientes(variaciones);
+    if (sinMotivo.length > 0) {
+      sileo.error({
+        title: "Faltan motivos de variación",
+        description: `Elija el motivo de ${sinMotivo.map((v) => v.nombres).join(", ")} en «Variaciones de docentes».`,
+      });
+      document.getElementById("variaciones")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     if (!plazo.puedeEnviar) {
       sileo.error({
         title: "No se puede enviar",
@@ -205,6 +250,16 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
         >
           <FiDownload aria-hidden /> {descargando ? "Generando…" : "Formato oficial"}
         </Boton>
+        {puedeAbrirEdicion && (
+          <Boton variante="secundario" onClick={() => setPidiendoMotivo(true)}>
+            <FiEdit3 aria-hidden /> Editar asignación
+          </Boton>
+        )}
+        {edicionAdmin && (
+          <Boton variante="secundario" onClick={nuevoDocente}>
+            <FiPlus aria-hidden /> Agregar docente
+          </Boton>
+        )}
         {editable && (
           <>
             <Boton variante="secundario" onClick={nuevoDocente}>
@@ -242,6 +297,19 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
       )}
 
       <CambiosParametros asignacion={asignacion} />
+
+      {edicionAdmin && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
+          <FiEdit3 className="mt-0.5 h-5 w-5 shrink-0 text-violet-700" aria-hidden />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-violet-900">Edición del administrador abierta</p>
+            <p className="mt-0.5 text-sm text-violet-900">
+              Puede corregir los docentes de esta entrega. El cambio queda en el historial con su
+              motivo; al aprobarla o devolverla, la edición se cierra.
+            </p>
+          </div>
+        </div>
+      )}
 
       {bloqueo && esCoordinador && (
         <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -316,7 +384,7 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
                 : `${resumen.completos} de ${resumen.totalDocentes} con los datos completos`}
             </p>
           </div>
-          {editable && (
+          {editaDocentes && (
             <Boton variante="secundario" onClick={nuevoDocente}>
               <FiPlus aria-hidden /> Agregar docente
             </Boton>
@@ -328,11 +396,11 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
             <FiUsers className="mx-auto h-10 w-10 text-[var(--color-texto-suave)]/40" aria-hidden />
             <h4 className="mt-3 font-bold text-[var(--color-texto)]">Sin docentes asignados</h4>
             <p className="mx-auto mt-1 max-w-md text-sm text-[var(--color-texto-suave)]">
-              {editable
+              {editaDocentes
                 ? "Agregue el primer docente para registrar sus cursos, descargas y horas de dedicación."
                 : "Esta asignación se entregó sin docentes registrados."}
             </p>
-            {editable && (
+            {editaDocentes && (
               <Boton className="mt-5" onClick={nuevoDocente}>
                 <FiPlus aria-hidden /> Agregar docente
               </Boton>
@@ -398,7 +466,7 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
                   />
                 </Link>
 
-                {editable && (
+                {editaDocentes && (
                   <button
                     type="button"
                     onClick={() => setPorEliminar(docente.id)}
@@ -427,6 +495,20 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
           </footer>
         )}
       </section>
+
+      {/* ---------------- Salen y llegan ---------------- */}
+      {!esImportada(asignacion) && (
+        <div id="variaciones" className="scroll-mt-6">
+          <VariacionesDocentes
+            filas={variaciones}
+            periodoAnterior={periodoAnterior(asignacion.periodo)}
+            hayAnterior={Boolean(anterior)}
+            editable={editaDocentes}
+            dedicaciones={Object.keys(config.reglas)}
+            onGuardar={(filas) => guardarVariaciones(asignacion.id, filas)}
+          />
+        </div>
+      )}
 
       {/* ---------------- Trazabilidad ---------------- */}
       <section className="tarjeta tarjeta-sombra mt-8 overflow-hidden">
@@ -467,6 +549,65 @@ export default function VistaAsignacion({ params }: { params: Promise<{ id: stri
         }
         etiquetaConfirmar="Enviar"
       />
+      <ModalMotivoEdicion
+        abierto={pidiendoMotivo}
+        onCerrar={() => setPidiendoMotivo(false)}
+        onConfirmar={confirmarEdicion}
+      />
     </main>
+  );
+}
+
+/**
+ * El motivo es obligatorio: es lo único que le explica al coordinador por
+ * qué cambió lo que entregó (SPEC-023).
+ */
+function ModalMotivoEdicion({
+  abierto,
+  onCerrar,
+  onConfirmar,
+}: {
+  abierto: boolean;
+  onCerrar: () => void;
+  onConfirmar: (motivo: string) => void;
+}) {
+  const [motivo, setMotivo] = useState("");
+  const cerrar = () => {
+    setMotivo("");
+    onCerrar();
+  };
+  const confirmar = () => {
+    if (!motivo.trim()) {
+      sileo.error({ title: "Falta el motivo", description: "Explique qué va a corregir y por qué." });
+      return;
+    }
+    onConfirmar(motivo.trim());
+    setMotivo("");
+  };
+
+  return (
+    <Modal abierto={abierto} onCerrar={cerrar} titulo="Editar asignación entregada" tamano="lg">
+      <Campo
+        etiqueta="Motivo"
+        requerido
+        ayuda="Queda en el historial de la asignación, a su nombre, y el coordinador lo ve."
+      >
+        <textarea
+          className="campo min-h-28 resize-y"
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          placeholder="Ej.: Se corrige el grupo del curso de Cálculo I, mal digitado."
+          data-foco-inicial
+        />
+      </Campo>
+      <div className="mt-6 flex gap-3">
+        <Boton variante="secundario" className="flex-1" onClick={cerrar}>
+          Cancelar
+        </Boton>
+        <Boton className="flex-1" onClick={confirmar}>
+          Abrir edición
+        </Boton>
+      </div>
+    </Modal>
   );
 }

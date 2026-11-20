@@ -27,6 +27,13 @@ const REPORTES = [
     href: "/admin/reportes/cuadro-resumen",
   },
   {
+    icono: FiUsers,
+    titulo: "Variaciones",
+    texto:
+      "Docentes que salen, llegan o cambian de dedicación o rol en cada programa, con su motivo. La hoja VARIACIONES del consolidado.",
+    href: "/admin/reportes/variaciones",
+  },
+  {
     icono: FiTrendingUp,
     titulo: "Comparativo estadístico",
     texto:

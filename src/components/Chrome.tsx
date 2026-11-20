@@ -14,8 +14,11 @@ export default function Chrome({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <BarraLateral />
-      <div className="min-h-screen lg:ml-64">{children}</div>
+      {/* Al imprimir (los criterios en PDF, SPEC-025) solo va el contenido. */}
+      <div className="print:hidden">
+        <BarraLateral />
+      </div>
+      <div className="min-h-screen lg:ml-64 print:ml-0">{children}</div>
     </>
   );
 }

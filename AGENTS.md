@@ -298,7 +298,10 @@ lib/verificar-transiciones.ts   prueba del ciclo con las acciones del store
 lib/novedades.ts     diferencias de parámetros y foto de impacto ← PURO
 lib/resumen.ts       totales por asignación y separarEnProgreso()
 lib/reportes.ts      cuadro resumen, comparativo y proyección ← PURO
-lib/criterios.ts     texto de los criterios del Consejo Académico ← CONSULTA, NO REGLAS
+lib/criterios.ts     versión inicial de los criterios, por modalidad ← CONSULTA, NO REGLAS
+lib/criterios-versiones.ts   borrador, publicación, validación y cambios de los criterios ← PURO (SPEC-025)
+app/api/criterios    leer, guardar borrador, publicar y descartar los criterios
+app/admin/criterios  el editor de los criterios (el PDF sale de imprimir /criterios)
 lib/historicos.ts    cifras 2022-1…2025-2 del consolidado ← GENERADO, NO EDITAR A MANO
 components/Graficas.tsx   gráficas SVG de los reportes (paleta validada, ver el comentario)
 lib/exportar-cuadro.ts   el cuadro en .xlsx (exceljs bajo demanda)
@@ -306,7 +309,8 @@ lib/exportar-formato.ts  una asignación en el formato oficial .xlsx
 lib/exportar-comparativo.ts   el comparativo y la proyección en .xlsx
 lib/directorio.ts    leer y depurar el listado de docentes, completar la ficha ← PURO (SPEC-021)
 lib/servidor/directorio.ts   cargar el listado y buscar por cédula, código o nombre
-components/BuscadorDocente.tsx   la búsqueda en la ficha del docente
+lib/usar-directorio.ts       sugerir y traer al docente desde «Número de documento»
+components/SugerenciasCedula.tsx   la lista de cédulas sugeridas bajo ese campo
 db/cargar-listado-docentes.ts    la misma carga desde la consola
 lib/cursos-conocidos.ts   sugerencias y duplicado de cursos ← PURO (SPEC-019)
 lib/verificar-cursos.ts   prueba de lo anterior
@@ -375,6 +379,7 @@ npx tsx src/lib/verificar-transiciones.ts   # si tocaste el ciclo de vida o el s
 npx tsx src/lib/verificar-importacion.ts "<ASIGNACION_IS_2026_2PV3.xlsx>"   # si tocaste lib/importar/, transiciones o reportes
 npx tsx src/lib/servidor/verificar-sesion.ts   # si tocaste la sesión o lib/auth/
 npx tsx src/lib/verificar-cursos.ts   # si tocaste lib/cursos-conocidos.ts
+npx tsx src/lib/verificar-criterios.ts   # si tocaste lib/criterios*.ts
 npx tsx src/lib/verificar-directorio.ts "<LISTADO DOCENTES CODIFICADO.xlsx>"   # si tocaste lib/directorio.ts
 DATABASE_URL=postgresql://…/asignacion_academica_prueba npx tsx src/lib/servidor/verificar-sql.ts   # si tocaste lib/servidor/ o los tipos
 ```
@@ -398,6 +403,9 @@ Y pruébalo **con los dos roles** (`admin@cecar.edu.co` / `admin123`,
   o editar la bitácora: deja el expediente mintiendo.
 - Permitir que se edite una asignación ya entregada. Si hace falta reabrirla,
   se reabre por el camino previsto (`reabrirPorParametros`), que deja rastro.
+  La única excepción es el administrador sobre lo `enviada`/`en_revision`,
+  con la edición abierta por `abrirEdicionAdmin` y su motivo en la
+  bitácora (`edicionAdminAbierta`, SPEC-023).
 - Traer otro ORM u otro motor de base de datos. La base es PostgreSQL y se
   habla con Prisma desde `lib/servidor/` (SPEC-011).
 - Usar `prisma db push`, o generar una migración sin revisar su SQL. Las

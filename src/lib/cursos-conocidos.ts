@@ -90,6 +90,24 @@ export function completarCurso(curso: Curso, ficha: FichaCurso): Partial<Curso> 
 }
 
 /**
+ * Los grupos que se ofrecen: 1 a 10 en presencial y, en distancia y
+ * virtual, los bloques. Un curso puede dictarse en los dos bloques a la vez:
+ * «BL1-BL2», como lo escribe el formato. El catálogo GRUPOS (catalogos.ts,
+ * generado del Excel) solo trae los números.
+ */
+export const BLOQUES = [
+  { valor: "BL1", texto: "Bloque 1 (BL1)" },
+  { valor: "BL2", texto: "Bloque 2 (BL2)" },
+  { valor: "BL1-BL2", texto: "Bloques 1 y 2 (BL1-BL2)" },
+] as const;
+
+export function opcionesGrupo(numeros: readonly string[], actual = ""): { valor: string; texto: string }[] {
+  const opciones = [...numeros.map((g) => ({ valor: g, texto: `Grupo ${g}` })), ...BLOQUES];
+  // Lo que vino de un Excel con otra escritura («B1») no debe desaparecer del campo.
+  return actual && !opciones.some((o) => o.valor === actual) ? [{ valor: actual, texto: actual }, ...opciones] : opciones;
+}
+
+/**
  * El grupo que sigue al de un curso duplicado: "1" → "2". Si no es un
  * número o ya es el último, queda vacío para que se elija.
  */

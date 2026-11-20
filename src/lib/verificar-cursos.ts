@@ -4,7 +4,7 @@
  *   npx tsx src/lib/verificar-cursos.ts
  */
 import { GRUPOS } from "./catalogos";
-import { buscarFicha, catalogoDeCursos, completarCurso, fichasDePrograma, grupoSiguiente, resumenCurso } from "./cursos-conocidos";
+import { buscarFicha, catalogoDeCursos, completarCurso, fichasDePrograma, grupoSiguiente, opcionesGrupo, resumenCurso } from "./cursos-conocidos";
 import { nuevoCurso, type Asignacion, type Curso } from "./tipos";
 
 let fallos = 0;
@@ -61,6 +61,11 @@ comprobar("duplicar: sin grupo o en el último, queda por elegir", grupoSiguient
 const resumen = resumenCurso(curso({ codigoCurso: "4623", semestre: 6, grupo: "1", jornada: "DIURNA", modalidad: "PRESENCIAL", intensidadHoraria: 4, creditos: 3, estudiantes: 35 }));
 comprobar("resumen de una línea", resumen.join(" · ") === "Cód. 4623 · Sem 6 · G1 · Diurna · Presencial · 4 h · 3 cr · 35 est.", resumen);
 comprobar("el resumen omite lo vacío, pero no los ceros", resumenCurso(curso({ estudiantes: 0 })).join() === "0 est.");
+
+// Bloques de distancia y virtual: uno, otro o los dos a la vez.
+comprobar("ofrece BL1-BL2", opcionesGrupo(["1", "2"]).some((o) => o.valor === "BL1-BL2"));
+comprobar("conserva un grupo escrito de otra forma", opcionesGrupo(["1"], "B1")[0].valor === "B1");
+comprobar("duplicar BL1 propone BL2", grupoSiguiente("BL1", ["1", "BL1", "BL2"]) === "BL2");
 
 console.log(fallos === 0 ? "\n✓ Cursos conocidos verificados." : `\n✗ ${fallos} fallos.`);
 process.exit(fallos === 0 ? 0 : 1);

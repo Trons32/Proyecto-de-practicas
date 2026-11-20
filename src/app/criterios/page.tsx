@@ -1,15 +1,24 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Encabezado from "@/components/Encabezado";
-import { Entrada, Seccion } from "@/components/ui";
-import { FiSearch } from "@/components/iconos";
-import { CRITERIOS, PERIODO_CRITERIOS, type Bloque, type SeccionCriterios } from "@/lib/criterios";
+import { Bloques } from "@/components/CriteriosBloques";
+import { Boton, Entrada, Insignia, Seccion, Seleccion } from "@/components/ui";
+import { FiClock, FiEdit3, FiPrinter, FiSearch } from "@/components/iconos";
+import { MODALIDADES, type Bloque, type Modalidad, type SeccionCriterios } from "@/lib/criterios";
+import { nombreModalidad, seccionesCambiadas, type VersionCriterios } from "@/lib/criterios-versiones";
+import { fechaHoraLegible } from "@/lib/convocatoria";
+import { useCriterios } from "@/lib/usar-criterios";
+import { useSesionStore } from "@/lib/stores/sesion-store";
 
 /**
- * Criterios de asignación académica (SPEC-015). Fuera de /admin a propósito:
+ * Criterios de asignación (SPEC-015). Fuera de /admin a propósito:
  * el coordinador los necesita mientras arma su asignación, y GuardiaSesion
  * cierra todo /admin a quien no es administrador.
+ *
+ * Desde SPEC-025 vienen de la base, por periodo y versión publicada; se
+ * filtran por modalidad y se descargan en PDF imprimiendo la vista.
  */
 
 /** Sin tildes ni mayúsculas: «tutor» debe encontrar «Tutores» y «práctica» «practica». */
@@ -51,133 +60,113 @@ function filtrar(seccion: SeccionCriterios, q: string): SeccionCriterios | null 
   return bloques.length ? { ...seccion, bloques } : null;
 }
 
-function Tabla({ b }: { b: Extract<Bloque, { tipo: "tabla" }> }) {
-  return (
-    <figure className="my-4">
-      <figcaption className="mb-2 text-xs font-semibold text-cecar-800">{b.titulo}</figcaption>
-      <div className="overflow-x-auto rounded-lg border border-[var(--color-borde)]">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-cecar-50 text-[11px] font-semibold tracking-wide text-cecar-800 uppercase">
-              {b.columnas.map((c, i) => (
-                <th
-                  key={c}
-                  scope="col"
-                  className={`border-b border-[var(--color-borde)] px-3 py-2.5 align-bottom ${
-                    i === 0 ? "min-w-[12rem] text-left" : c === "Observación" ? "min-w-[16rem] text-left" : "text-center"
-                  }`}
-                >
-                  {c}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {b.filas.map((fila, i) => (
-              <FilaTabla key={i} fila={fila} columnas={b.columnas} grupo={b.grupos?.[i]} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </figure>
-  );
-}
+/** La modalidad elegida más lo general, que aplica a todas. */
+const deModalidad = (s: SeccionCriterios, m: Modalidad | "") => !m || s.modalidad === m || s.modalidad === "general";
 
-function FilaTabla({ fila, columnas, grupo }: { fila: string[]; columnas: string[]; grupo?: string }) {
-  return (
-    <>
-      {grupo && (
-        <tr>
-          <th
-            colSpan={columnas.length}
-            scope="colgroup"
-            className="bg-cecar-50/60 px-3 py-2 text-left text-[11px] font-bold tracking-wide text-cecar-700 uppercase"
-          >
-            {grupo}
-          </th>
-        </tr>
-      )}
-      <tr className="border-t border-[var(--color-borde)] align-top">
-        {fila.map((celda, j) => {
-          const observacion = columnas[j] === "Observación";
-          return j === 0 ? (
-            <th key={j} scope="row" className="px-3 py-2.5 text-left font-medium text-[var(--color-texto)]">
-              {celda}
-            </th>
-          ) : (
-            <td
-              key={j}
-              className={`px-3 py-2.5 ${
-                observacion
-                  ? "text-xs leading-relaxed text-[var(--color-texto-suave)]"
-                  : "text-center tabular-nums text-[var(--color-texto)]"
-              }`}
-            >
-              {celda || (observacion ? "" : "—")}
-            </td>
-          );
-        })}
-      </tr>
-    </>
-  );
-}
-
-function Bloques({ bloques }: { bloques: Bloque[] }) {
-  return (
-    <div className="space-y-3 text-sm leading-relaxed text-[var(--color-texto)]">
-      {bloques.map((b, i) => {
-        switch (b.tipo) {
-          case "parrafo":
-            return <p key={i}>{b.texto}</p>;
-          case "subtitulo":
-            return (
-              <h4 key={i} className="pt-2 text-xs font-bold tracking-wide text-cecar-700 uppercase">
-                {b.texto}
-              </h4>
-            );
-          case "lista":
-            return (
-              <ul key={i} className="list-disc space-y-1.5 ps-5 marker:text-cecar-500">
-                {b.items.map((it) => (
-                  <li key={it}>{it}</li>
-                ))}
-              </ul>
-            );
-          case "nota":
-            return (
-              <p
-                key={i}
-                className="rounded-lg border-s-4 border-cecar-400 bg-cecar-50/60 px-4 py-3 text-xs text-[var(--color-texto-suave)]"
-              >
-                {b.texto}
-              </p>
-            );
-          case "tabla":
-            return <Tabla key={i} b={b} />;
-        }
-      })}
-    </div>
-  );
-}
+const claveVersion = (v: VersionCriterios) => `${v.periodo}#${v.numero}`;
 
 export default function Criterios() {
+  const router = useRouter();
+  const { publicadas, error } = useCriterios();
+  const esAdmin = useSesionStore((s) => s.sesion?.usuario.rol === "ADMIN");
+  const [clave, setClave] = useState("");
+  const [modalidad, setModalidad] = useState<Modalidad | "">("");
   const [busqueda, setBusqueda] = useState("");
   const q = normalizar(busqueda.trim());
+
+  // Por defecto, la más reciente: la lista viene ordenada desde el servidor.
+  const version = publicadas?.find((v) => claveVersion(v) === clave) ?? publicadas?.[0] ?? null;
   const secciones = useMemo(
-    () => CRITERIOS.map((s) => filtrar(s, q)).filter((s): s is SeccionCriterios => s !== null),
-    [q],
+    () =>
+      (version?.contenido ?? [])
+        .filter((s) => deModalidad(s, modalidad))
+        .map((s) => filtrar(s, q))
+        .filter((s): s is SeccionCriterios => s !== null),
+    [version, modalidad, q],
+  );
+  const historial = useMemo(
+    () => (version && publicadas ? publicadas.filter((v) => v.periodo === version.periodo) : []),
+    [version, publicadas],
   );
 
-  return (
-    <main className="px-4 py-6 sm:p-8">
-      <Encabezado
-        titulo="Criterios de asignación"
-        descripcion={`Lineamientos del Consejo Académico para el periodo ${PERIODO_CRITERIOS}: dedicaciones, roles, tamaños de grupo y tutores.`}
-      />
+  if (error || !publicadas || !version) {
+    return (
+      <main className="px-4 py-6 sm:p-8">
+        <Encabezado titulo="Criterios de asignación" descripcion={error ?? "Cargando…"} />
+      </main>
+    );
+  }
 
-      <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside className="lg:sticky lg:top-6 lg:self-start">
-          <div className="relative mb-4">
+  // El PDF es el documento (o la modalidad) entero: la búsqueda se limpia
+  // antes de imprimir, o saldría solo lo que coincidió.
+  const descargarPdf = () => {
+    setBusqueda("");
+    setTimeout(() => window.print(), 50);
+  };
+
+  const opcionesVersion = publicadas.map((v) => ({
+    valor: claveVersion(v),
+    texto: v.numero === 0 ? `${v.periodo} · documento original` : `${v.periodo} · versión ${v.numero}`,
+  }));
+
+  return (
+    <main className="px-4 py-6 sm:p-8 print:p-0">
+      {/* Solo en el PDF: qué documento es y de cuándo. */}
+      <header className="mb-6 hidden border-b-2 border-cecar-600 pb-3 print:block">
+        <p className="text-xs font-bold tracking-wide text-cecar-700 uppercase">
+          Corporación Universitaria del Caribe · CECAR
+        </p>
+        <h1 className="mt-1 text-xl font-bold text-[var(--color-texto)]">
+          Criterios de asignación académica {version.periodo}
+          {modalidad && ` · ${nombreModalidad(modalidad)}`}
+        </h1>
+        <p className="mt-1 text-xs text-[var(--color-texto-suave)]">
+          {version.numero === 0 ? "Documento original del Consejo Académico" : `Versión ${version.numero}`}
+          {version.publicada && ` · publicada el ${fechaHoraLegible(version.publicada)}`}
+          {version.publicadaPor && ` por ${version.publicadaPor}`}
+        </p>
+      </header>
+
+      <div className="print:hidden">
+        <Encabezado
+          titulo="Criterios de asignación"
+          descripcion={`Lineamientos del Consejo Académico para el periodo ${version.periodo}, por modalidad.`}
+        >
+          {esAdmin && (
+            <Boton variante="secundario" onClick={() => router.push("/admin/criterios")}>
+              <FiEdit3 aria-hidden /> Editar criterios
+            </Boton>
+          )}
+          <Boton onClick={descargarPdf}>
+            <FiPrinter aria-hidden /> {modalidad ? `PDF · ${nombreModalidad(modalidad)}` : "PDF completo"}
+          </Boton>
+        </Encabezado>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)] print:block">
+        <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start print:hidden">
+          <div>
+            <label className="etiqueta">Versión</label>
+            <Seleccion
+              opciones={opcionesVersion}
+              placeholder="Más reciente"
+              value={clave}
+              onChange={(e) => setClave(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="etiqueta">Modalidad</label>
+            <Seleccion
+              opciones={MODALIDADES.filter((m) => m.valor !== "general")}
+              placeholder="Todas"
+              value={modalidad}
+              onChange={(e) => setModalidad(e.target.value as Modalidad | "")}
+            />
+            {modalidad && (
+              <p className="mt-1 text-[11px] text-[var(--color-texto-suave)]">Incluye las secciones generales.</p>
+            )}
+          </div>
+          <div className="relative">
             <FiSearch
               className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[var(--color-texto-suave)]"
               aria-hidden
@@ -211,16 +200,56 @@ export default function Criterios() {
         <div className="min-w-0 space-y-6">
           {secciones.length === 0 && (
             <p className="tarjeta p-8 text-center text-sm text-[var(--color-texto-suave)]">
-              Nada en los criterios coincide con «{busqueda}».
+              {busqueda ? `Nada en los criterios coincide con «${busqueda}».` : "No hay secciones para esta modalidad."}
             </p>
           )}
           {secciones.map((s) => (
             <div key={s.id} id={s.id} className="scroll-mt-6">
-              <Seccion titulo={s.numero ? `${s.numero} · ${s.titulo}` : s.titulo}>
+              <Seccion
+                titulo={s.numero ? `${s.numero} · ${s.titulo}` : s.titulo}
+                accion={
+                  modalidad ? undefined : (
+                    <span className="print:hidden">
+                      <Insignia>{nombreModalidad(s.modalidad)}</Insignia>
+                    </span>
+                  )
+                }
+              >
                 <Bloques bloques={s.bloques} />
               </Seccion>
             </div>
           ))}
+
+          {historial.length > 0 && (
+            <section className="tarjeta p-5 print:hidden">
+              <h3 className="mb-3 flex items-center gap-2 text-sm font-bold tracking-wide text-cecar-800 uppercase">
+                <FiClock aria-hidden /> Historial de {version.periodo}
+              </h3>
+              <ol className="space-y-4">
+                {historial.map((v, i) => {
+                  const anterior = historial[i + 1];
+                  const cambios = anterior ? seccionesCambiadas(anterior.contenido, v.contenido) : [];
+                  return (
+                    <li key={claveVersion(v)} className="text-sm">
+                      <p className="font-semibold text-[var(--color-texto)]">
+                        {v.numero === 0 ? "Documento original" : `Versión ${v.numero}`}
+                        <span className="font-normal text-[var(--color-texto-suave)]">
+                          {v.publicada && ` · ${fechaHoraLegible(v.publicada)}`}
+                          {v.publicadaPor && ` · ${v.publicadaPor}`}
+                        </span>
+                      </p>
+                      {v.motivo && <p className="mt-0.5 text-[var(--color-texto-suave)]">{v.motivo}</p>}
+                      {cambios.length > 0 && (
+                        <p className="mt-1 text-xs text-[var(--color-texto-suave)]">
+                          {cambios.map((c) => `${c.titulo} (${c.tipo})`).join(" · ")}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          )}
         </div>
       </div>
     </main>

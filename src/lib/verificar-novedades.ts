@@ -68,7 +68,9 @@ const oficial = (): Parametros => ({
       {
         ...nuevoCurso(),
         nombreCurso: "CURSO",
-        intensidadHoraria: 26,
+        // 27 + 13 de apoyo = 40: con SPEC-024 tiene que cuadrar exacto, o
+        // ya tendría un error antes del cambio de tope.
+        intensidadHoraria: 27,
         creditos: 3,
         jornada: "DIURNA",
         modalidad: "PRESENCIAL",

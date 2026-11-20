@@ -14,6 +14,10 @@
  *   devuelta                 enviada|en_revision → en_correccion  (con plazo)
  *   reabierta_por_parametros borrador|enviada|   → en_correccion  (con plazo)
  *                            en_revision|aprobada
+ *   editada_por_admin        enviada|en_revision → (no cambia)     (con motivo)
+ *
+ * El administrador solo cambia el contenido con la edición abierta
+ * (SPEC-023): el último evento guardado, o uno nuevo, es `editada_por_admin`.
  *
  * Y el reloj (SPEC-022): con la convocatoria cerrada, un borrador ya no se
  * edita ni se envía; con el plazo de corrección vencido, tampoco una
@@ -32,14 +36,16 @@
  */
 import { cursosBase, esEditable, esImportada, type Asignacion, type EstadoAsignacion, type Evento, type TipoEvento } from "./tipos";
 import type { Convocatoria } from "./convocatoria";
-import { bloqueoPorPlazo, REABRIBLES } from "./plazos";
+import { bloqueoPorPlazo, edicionAdminAbierta, EDITABLES_POR_ADMIN, REABRIBLES } from "./plazos";
 
 interface Paso {
   desde: EstadoAsignacion[];
-  hacia: EstadoAsignacion;
+  /** null: el evento no cambia el estado. */
+  hacia: EstadoAsignacion | null;
   rol: Evento["rolAutor"] | null;
   subeVersion?: boolean;
   conPlazo?: boolean;
+  conNota?: boolean;
 }
 
 const PASOS: Partial<Record<TipoEvento, Paso>> = {
@@ -51,6 +57,7 @@ const PASOS: Partial<Record<TipoEvento, Paso>> = {
   // Con la convocatoria cerrada, un cambio de parámetros puede tocar lo
   // entregado y lo que quedó sin entregar (SPEC-022), no solo lo aprobado.
   reabierta_por_parametros: { desde: REABRIBLES, hacia: "en_correccion", rol: "ADMIN", conPlazo: true },
+  editada_por_admin: { desde: EDITABLES_POR_ADMIN, hacia: null, rol: "ADMIN", conNota: true },
 };
 
 /**
@@ -68,7 +75,7 @@ const comparable = (v: unknown): string =>
   );
 
 const contenido = (a: Asignacion) =>
-  comparable({ periodo: a.periodo, facultad: a.facultad, programa: a.programa, docentes: a.docentes });
+  comparable({ periodo: a.periodo, facultad: a.facultad, programa: a.programa, docentes: a.docentes, variaciones: a.variaciones ?? [] });
 
 const mismoInstante = (x?: string, y?: string) =>
   (x ? Date.parse(x) : null) === (y ? Date.parse(y) : null);
@@ -138,8 +145,10 @@ export function revisarGuardado(anterior: Asignacion | undefined, nueva: Asignac
       return "Un evento solo puede registrarse a nombre de quien lo hace.";
     }
     if (paso.conPlazo && !e.plazo) return `«${e.tipo}» exige un plazo de corrección.`;
+    if (paso.conNota && !e.nota?.trim()) return `«${e.tipo}» exige un motivo.`;
     if (paso.subeVersion) version++;
     if (e.version !== undefined && e.version !== version) return `El evento «${e.tipo}» no corresponde a la versión ${version}.`;
+    if (paso.hacia === null) continue;
     estado = paso.hacia;
     plazo = paso.conPlazo ? e.plazo : paso.hacia === "enviada" ? undefined : plazo;
   }
@@ -150,20 +159,35 @@ export function revisarGuardado(anterior: Asignacion | undefined, nueva: Asignac
     return "El plazo de corrección solo se fija al devolver o reabrir.";
   }
   const cambioContenido = contenido(nueva) !== contenido(anterior);
-  // La administración decide sobre el ciclo (aprobar, devolver o reabrir),
-  // pero no sustituye al coordinador al diligenciar la carga docente.
-  if (actor?.rol === "ADMIN" && cambioContenido) {
-    return "El administrador solo puede revisar la información del docente.";
+  // El administrador corrige lo entregado solo con la edición abierta, que
+  // deja motivo en la bitácora (SPEC-023). Las ediciones que lleguen junto
+  // con la aprobación o la devolución ocurrieron antes de ellas.
+  const nuevos = nueva.bitacora.slice(previos.length);
+  const edicionAdmin = edicionAdminAbierta(anterior) || nuevos.some((e) => e.tipo === "editada_por_admin");
+  if (actor?.rol === "ADMIN" && cambioContenido && !edicionAdmin) {
+    return "Para corregir la asignación, el administrador tiene que abrir la edición con un motivo.";
+  }
+  // Una excepción de horas (SPEC-024) solo la pone o la cambia el
+  // administrador con la edición abierta, a su nombre. Quitarla sí puede
+  // cualquiera: devuelve al docente a la regla general.
+  const excepcionPrevia = new Map(anterior.docentes.map((d) => [d.id, comparable(d.excepcionHoras ?? null)]));
+  for (const d of nueva.docentes) {
+    if (!d.excepcionHoras || excepcionPrevia.get(d.id) === comparable(d.excepcionHoras)) continue;
+    if (!edicionAdmin || actor?.rol === "COORDINADOR") {
+      return "Solo el administrador, con la edición abierta, autoriza una excepción de horas.";
+    }
+    if (actor && d.excepcionHoras.autor !== actor.nombres) return "La excepción tiene que quedar a nombre de quien la autoriza.";
+    if (!d.excepcionHoras.motivo.trim()) return "La excepción de horas exige un motivo.";
   }
   // Fuera de plazo, el coordinador ni edita ni entrega (SPEC-022). Se mira
   // el estado guardado: es el que tenía cuando empezó a escribir. Las
   // decisiones del administrador (aprobar, devolver, reabrir) siguen.
-  const entrega = nueva.bitacora.slice(previos.length).some((e) => e.tipo === "enviada" || e.tipo === "reenviada");
+  const entrega = nuevos.some((e) => e.tipo === "enviada" || e.tipo === "reenviada");
   if (actor?.rol !== "ADMIN" && (cambioContenido || entrega)) {
     const bloqueo = bloqueoPorPlazo(anterior, contexto.convocatoria, contexto.ahora);
     if (bloqueo) return bloqueo;
   }
-  if (!editableAlEmpezar && cambioContenido) {
+  if (!editableAlEmpezar && cambioContenido && !(edicionAdmin && actor?.rol !== "COORDINADOR")) {
     return "La asignación ya fue entregada: sus docentes no se pueden modificar.";
   }
   return revisarLineaBase(anterior, nueva);

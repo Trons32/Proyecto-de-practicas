@@ -50,6 +50,40 @@ export interface Docente {
   descargas: Descarga[];
   administrativas: Administrativa[];
   cursos: Curso[];
+  /**
+   * El administrador autorizó que este docente no cuadre con su dedicación
+   * (SPEC-024). Vale solo para el total con que se autorizó: si las horas
+   * cambian, la excepción deja de aplicar y hay que autorizarla de nuevo.
+   * Opcional: lo guardado antes no la trae.
+   */
+  excepcionHoras?: ExcepcionHoras;
+}
+
+export interface Variacion {
+  id: string;
+  tipo: "saliente" | "nuevo" | "cambio";
+  /** Código del catálogo `MOTIVOS` (lib/variaciones.ts). */
+  motivo?: string;
+  /** Qué cambió, en los que siguen: «Medio tiempo → Tiempo completo · Asume: …». */
+  detalle?: string;
+  documento: string;
+  nombres: string;
+  dedicacion: string;
+  /** Observación libre; obligatoria cuando el motivo es «otro». */
+  nota: string;
+  /** Solo en los nuevos: el nombre del saliente al que reemplaza. */
+  reemplazaA?: string;
+  /** Agregado a mano: no salió de comparar con el periodo anterior. */
+  manual?: boolean;
+}
+
+export interface ExcepcionHoras {
+  motivo: string;
+  autor: string;
+  /** ISO 8601. */
+  fecha: string;
+  /** El total semanal que se autorizó. */
+  horas: number;
 }
 
 /**
@@ -107,7 +141,13 @@ export type TipoEvento =
    * Cargada desde el Excel de un periodo anterior al sistema (SPEC-017). Es
    * el único evento de esa asignación: nace aprobada y nunca se reabre.
    */
-  | "importada";
+  | "importada"
+  /**
+   * El administrador abre la edición de lo entregado, con un motivo
+   * (SPEC-023). No cambia el estado: mientras sea el último evento, puede
+   * corregir los docentes antes de aprobar o devolver.
+   */
+  | "editada_por_admin";
 
 export interface Evento {
   id: string;
@@ -160,6 +200,12 @@ export interface Asignacion {
   plazoCorreccion?: string;
   /** Trazabilidad, del evento más antiguo al más reciente. */
   bitacora: Evento[];
+  /**
+   * Docentes que salen, llegan y cambian frente al periodo anterior (SPEC-027),
+   * como las tablas DOCENTES SALIENTES / DOCENTES NUEVOS del formato.
+   * Opcional: lo guardado antes no lo trae.
+   */
+  variaciones?: Variacion[];
   /**
    * Los cursos tal como se aprobaron la primera vez (SPEC-009): lo
    * proyectado. Lo vigente puede cambiar después —se reabre y se corrige—

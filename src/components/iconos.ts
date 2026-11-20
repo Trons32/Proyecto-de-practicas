@@ -50,6 +50,11 @@ export {
   FiSend,
   FiMinus,
   FiCompass,
+  FiArrowUp,
+  FiArrowDown,
+  FiUserMinus,
+  FiUserPlus,
+  FiUserCheck,
 } from "react-icons/fi";
 
 // Feather no trae logos de marca. El de WhatsApp es la excepción: en el botón

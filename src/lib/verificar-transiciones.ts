@@ -11,7 +11,9 @@ import { useAsignacionStore, type Autor } from "./stores/asignacion-store";
 import { revisarBorrado, revisarGuardado } from "./transiciones";
 import { cursosBase, nuevoDocente, nuevoEvento, type Asignacion } from "./tipos";
 import type { Convocatoria } from "./convocatoria";
-import { bloqueoPorPlazo, reabrible } from "./plazos";
+import { calcularTotales, validarDocente } from "./calculo";
+import { asignacionAnterior, filasVariacion, variacionesPendientes } from "./variaciones";
+import { bloqueoPorPlazo, edicionAdminAbierta, reabrible } from "./plazos";
 
 let fallos = 0;
 const comprobar = (nombre: string, ok: boolean, detalle?: unknown) => {
@@ -209,6 +211,89 @@ admite("reabrir por parámetros un borrador bloqueado", borrador4, foto(id4));
 comprobar("un borrador abierto no se ofrece para reabrir", !reabrible(borrador4, { "2026-2": abierta }));
 comprobar("un borrador bloqueado por el cierre sí", reabrible(borrador4, { "2026-2": cerrada }));
 comprobar("una aprobada sí, aunque la convocatoria siga abierta", reabrible(aprobada, { "2026-2": abierta }));
+
+// ── El administrador corrige lo entregado (SPEC-023) ─────────
+const idE = store().crearAsignacion({ periodo: "2026-2", facultad: "DERECHO_Y_CIENCIAS_POLÍTICAS", programa: "DERECHO" }, coord);
+store().agregarDocente(idE);
+store().enviar(idE, coord);
+const entregadaE = foto(idE);
+store().abrirEdicionAdmin(idE, admin, "   ");
+comprobar("sin motivo, el store no abre la edición", foto(idE).bitacora.length === entregadaE.bitacora.length);
+store().abrirEdicionAdmin(idE, admin, "Grupo mal digitado");
+const abiertaE = foto(idE);
+admite("abrir la edición del administrador", entregadaE, abiertaE);
+comprobar("abrir la edición no cambia estado ni versión", abiertaE.estado === "enviada" && abiertaE.version === entregadaE.version);
+comprobar("con la edición abierta lo dice la bitácora", edicionAdminAbierta(abiertaE));
+const corregidaE: Asignacion = { ...abiertaE, docentes: [...abiertaE.docentes, nuevoDocente()] };
+comprobar("con sesión: el administrador edita con la edición abierta", revisarGuardado(abiertaE, corregidaE, sesionAdmin) === null);
+comprobar("con sesión: abre y edita en el mismo guardado", revisarGuardado(entregadaE, corregidaE, sesionAdmin) === null);
+comprobar("con sesión: sin abrirla, el administrador no edita", revisarGuardado(entregadaE, { ...entregadaE, docentes: [] }, sesionAdmin) !== null);
+comprobar("con sesión: el coordinador no edita aunque esté abierta", revisarGuardado(abiertaE, corregidaE, sesionCoord) !== null);
+comprobar("con sesión: el coordinador no puede abrirla", revisarGuardado(entregadaE, {
+  ...entregadaE,
+  bitacora: [...entregadaE.bitacora, nuevoEvento({ tipo: "editada_por_admin", autor: "COORDINADOR", rolAutor: "COORDINADOR", nota: "x", version: entregadaE.version })],
+}, sesionCoord) !== null);
+rechaza("abrir la edición sin motivo", entregadaE, {
+  ...entregadaE,
+  bitacora: [...entregadaE.bitacora, nuevoEvento({ tipo: "editada_por_admin", autor: "ADMIN", rolAutor: "ADMIN", version: entregadaE.version })],
+});
+rechaza("abrir la edición sobre una aprobada", aprobada, {
+  ...aprobada,
+  bitacora: [...aprobada.bitacora, nuevoEvento({ tipo: "editada_por_admin", autor: "ADMIN", rolAutor: "ADMIN", nota: "x", version: aprobada.version })],
+});
+store().actualizarAsignacion(idE, { docentes: corregidaE.docentes });
+const antesDeAprobarE = foto(idE);
+store().aprobar(idE, admin);
+const aprobadaE = foto(idE);
+admite("aprobar tras la edición del administrador", antesDeAprobarE, aprobadaE);
+comprobar("la línea base es lo corregido", aprobadaE.lineaBase?.cursos.length === cursosBase(corregidaE.docentes).length);
+comprobar("aprobar cierra la edición", !edicionAdminAbierta(aprobadaE));
+comprobar("con sesión: aprobada, el administrador ya no edita", revisarGuardado(aprobadaE, { ...aprobadaE, docentes: [] }, sesionAdmin) !== null);
+
+// ── Excepción de horas (SPEC-024) ─────────────────────────────
+const excepcion = { motivo: "Comisión de estudios", autor: "ADMIN", fecha: "2026-11-19T12:00:00.000Z", horas: 30 };
+const conExcepcion = (a: Asignacion, autor = "ADMIN"): Asignacion => ({
+  ...a,
+  docentes: a.docentes.map((d, i) => (i === 0 ? { ...d, excepcionHoras: { ...excepcion, autor } } : d)),
+});
+comprobar("con sesión: el administrador autoriza una excepción con la edición abierta", revisarGuardado(abiertaE, conExcepcion(abiertaE), sesionAdmin) === null);
+comprobar("con sesión: sin la edición abierta, no", revisarGuardado(entregadaE, conExcepcion(entregadaE), sesionAdmin) !== null);
+comprobar("con sesión: el coordinador no se autoriza una excepción en su borrador", revisarGuardado(base, conExcepcion({ ...base, docentes: [nuevoDocente()] }, "COORDINADOR"), sesionCoord) !== null);
+comprobar("con sesión: la excepción va a nombre de quien la autoriza", revisarGuardado(abiertaE, conExcepcion(abiertaE, "OTRO"), sesionAdmin) !== null);
+comprobar("con sesión: el coordinador conserva una excepción ya autorizada", (() => {
+  const b = conExcepcion({ ...base, docentes: [nuevoDocente()] });
+  return revisarGuardado(b, { ...b, docentes: b.docentes.map((d) => ({ ...d, observaciones: "x" })) }, sesionCoord) === null;
+})());
+
+const horasDe = (d: Asignacion["docentes"][number], totalSemanal: number) =>
+  validarDocente(d, { ...calcularTotales(d), totalSemanal, maxHoras: 40 }).find((h) => h.campo === "totalSemanal");
+const docenteHoras = { ...nuevoDocente(), dedicacion: "TIEMPO_COMPLETO" };
+comprobar("quedarse corto es error", horasDe(docenteHoras, 30)?.severidad === "error");
+comprobar("pasarse es error", horasDe(docenteHoras, 44)?.severidad === "error");
+comprobar("cuadrar no deja hallazgo", horasDe(docenteHoras, 40) === undefined);
+comprobar("con excepción vigente queda como aviso", horasDe({ ...docenteHoras, excepcionHoras: excepcion }, 30)?.severidad === "aviso");
+comprobar("si las horas cambian, la excepción ya no aplica", horasDe({ ...docenteHoras, excepcionHoras: excepcion }, 32)?.severidad === "error");
+
+// ── Salen y llegan (SPEC-027) ─────────────────────────────────
+const dA = { ...nuevoDocente(), documento: "111111", nombres: "ANA" };
+const dB = { ...nuevoDocente(), documento: "222222", nombres: "BETO" };
+const dC = { ...nuevoDocente(), documento: "333333", nombres: "CARLA" };
+const previa: Asignacion = { ...base, id: "previa", periodo: "2026-1", docentes: [dA, dB] };
+const vigente: Asignacion = { ...base, periodo: "2026-2", docentes: [dA, dC] };
+comprobar("encuentra la asignación anterior del programa", asignacionAnterior(vigente, [previa, vigente])?.id === "previa");
+const filasV = filasVariacion(vigente, previa);
+comprobar("sale quien ya no está y llega quien no estaba", filasV.map((v) => `${v.tipo}:${v.nombres}`).join() === "saliente:BETO,nuevo:CARLA");
+comprobar("un saliente sin motivo queda pendiente", variacionesPendientes(filasV).length === 1);
+const conMotivo = { ...vigente, variaciones: filasV.map((v) => (v.tipo === "saliente" ? { ...v, motivo: "RENUNCIA" } : v)) };
+comprobar("el motivo guardado se conserva", variacionesPendientes(filasVariacion(conMotivo, previa)).length === 0);
+comprobar("«otro» sin observación sigue pendiente", variacionesPendientes([{ ...filasV[0], motivo: "OTRO", nota: "" }]).length === 1);
+comprobar("texto libre de antes cuenta como «otro»", variacionesPendientes([{ ...filasV[0], nota: "Renuncia" }]).length === 0);
+const dAtc = { ...dA, dedicacion: "TIEMPO_COMPLETO", descargas: [{ id: "x", rolId: 1, horas: 4 }] };
+const cambioV = filasVariacion({ ...vigente, docentes: [dAtc, dC] }, { ...previa, docentes: [{ ...dA, dedicacion: "HORA_CÁTEDRA" }, dB] });
+const cambioA = cambioV.find((v) => v.tipo === "cambio");
+comprobar("detecta el cambio de dedicación y el rol que asume", Boolean(cambioA?.detalle?.includes("→") && cambioA.detalle.includes("Asume")), cambioA);
+comprobar("propone el motivo del cambio", cambioA?.motivo === "CAMBIO_DEDICACION");
+comprobar("entregada, los salientes no se editan", revisarGuardado(entregadaE, { ...entregadaE, variaciones: filasV }, sesionCoord) !== null);
 
 // ── Borrar ────────────────────────────────────────────────────
 comprobar("se borra un borrador sin entregar", revisarBorrado(base) === null);

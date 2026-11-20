@@ -60,3 +60,14 @@ export function reabrible(
   if (esImportada(a) || !REABRIBLES.includes(a.estado)) return false;
   return a.estado !== "borrador" || bloqueoPorPlazo(a, convocatorias[a.periodo], ahora) !== null;
 }
+
+/** Los estados en que el administrador puede corregir lo entregado (SPEC-023). */
+export const EDITABLES_POR_ADMIN: EstadoAsignacion[] = ["enviada", "en_revision"];
+
+/**
+ * Si el administrador tiene abierta la edición: la abrió con un motivo y
+ * todavía no aprobó ni devolvió. Se deduce de la bitácora para que no haya
+ * edición sin rastro.
+ */
+export const edicionAdminAbierta = (a: Pick<Asignacion, "estado" | "bitacora">): boolean =>
+  EDITABLES_POR_ADMIN.includes(a.estado) && a.bitacora.at(-1)?.tipo === "editada_por_admin";

@@ -151,6 +151,9 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
             tipo_contrato: t(d.tipoContrato), dedicacion: t(d.dedicacion), categoria: t(d.categoria),
             sede: t(d.sede), evaluacion_docente: num(d.evaluacionDocente), observaciones: t(d.observaciones),
             preparacion: d.preparacion, atencion: d.atencion, comunidades: d.comunidades,
+            excepcion_motivo: d.excepcionHoras?.motivo ?? null, excepcion_autor: d.excepcionHoras?.autor ?? null,
+            excepcion_fecha: d.excepcionHoras ? new Date(d.excepcionHoras.fecha) : null,
+            excepcion_horas: d.excepcionHoras?.horas ?? null,
           },
         });
 
@@ -186,6 +189,19 @@ export async function guardarAsignaciones(asignaciones: Asignacion[], borrados: 
         })),
         skipDuplicates: true,
       });
+
+      // Salientes y nuevos (SPEC-027): se reescriben enteros, como los docentes.
+      await tx.variacion_docente.deleteMany({ where: { asignacion_id: asigId } });
+      if (a.variaciones?.length) {
+        await tx.variacion_docente.createMany({
+          data: a.variaciones.map((v, i) => ({
+            id: aUuid(`${a.id}:${v.id}`), asignacion_id: asigId, orden: i + 1, tipo: v.tipo,
+            documento: t(v.documento), nombres: v.nombres.trim() || "—", dedicacion: t(v.dedicacion),
+            nota: t(v.nota), reemplaza_a: v.tipo === "nuevo" ? t(v.reemplazaA) : null, manual: Boolean(v.manual),
+            motivo: t(v.motivo), detalle: t(v.detalle),
+          })),
+        });
+      }
 
       // La línea base se escribe una sola vez: `transiciones.ts` ya
       // comprobó que no cambió, y la tabla no admite UPDATE.

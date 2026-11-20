@@ -37,6 +37,7 @@ model asignacion {
   docente_asignado                    docente_asignado[]
   evento_asignacion                   evento_asignacion[]
   linea_base_curso                    linea_base_curso[]
+  variacion_docente                   variacion_docente[]
 
   @@index([periodo, estado], map: "ix_asignacion_periodo")
 }
@@ -78,7 +79,7 @@ model curso_asignado {
   codigo_curso        String?          @db.VarChar(20)
   nombre_curso        String?          @db.VarChar(150)
   semestre            Int?             @db.SmallInt
-  grupo               String?          @db.VarChar(5)
+  grupo               String?          @db.VarChar(10)
   jornada             String?          @db.VarChar(15)
   intensidad_horaria  Decimal?         @db.Decimal(5, 1)
   creditos            Int?             @db.SmallInt
@@ -126,6 +127,10 @@ model docente_asignado {
   preparacion                                                 Decimal                        @db.Decimal(5, 1)
   atencion                                                    Decimal                        @db.Decimal(5, 1)
   comunidades                                                 Decimal                        @db.Decimal(5, 1)
+  excepcion_motivo                                            String?
+  excepcion_autor                                             String?                        @db.VarChar(150)
+  excepcion_fecha                                             DateTime?                      @db.Timestamptz(6)
+  excepcion_horas                                             Decimal?                       @db.Decimal(5, 1)
   actividad                                                   actividad[]
   curso_asignado                                              curso_asignado[]
   asignacion                                                  asignacion                     @relation(fields: [asignacion_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_da_asignacion")
@@ -178,7 +183,7 @@ model linea_base_curso {
   codigo_curso       String?    @db.VarChar(20)
   nombre_curso       String?    @db.VarChar(150)
   semestre           Int?       @db.SmallInt
-  grupo              String?    @db.VarChar(5)
+  grupo              String?    @db.VarChar(10)
   intensidad_horaria Decimal?   @db.Decimal(5, 1)
   estudiantes        Int?       @db.SmallInt
   asignacion         asignacion @relation(fields: [asignacion_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_lbc_asignacion")
@@ -313,4 +318,39 @@ model usuario {
   clave_actualizada  DateTime? @db.Timestamptz(6)
   debe_cambiar_clave Boolean   @default(false)
   programa           programa? @relation(fields: [programa_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_usuario_programa")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model criterios_version {
+  id              String    @id(map: "pk_criterios_version") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  periodo         String    @unique(map: "uq_cv_borrador", where: raw("((estado)::text = 'borrador'::text)")) @db.Char(6)
+  numero          Int
+  estado          String    @db.VarChar(10)
+  contenido       Json
+  actualizado     DateTime  @db.Timestamptz(6)
+  actualizado_por String    @db.VarChar(150)
+  publicada       DateTime? @db.Timestamptz(6)
+  publicada_por   String?   @db.VarChar(150)
+  motivo          String?
+
+  @@unique([periodo, numero], map: "uq_cv_publicada", where: raw("((estado)::text = 'publicada'::text)"))
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model variacion_docente {
+  id            String     @id(map: "pk_variacion_docente") @db.Uuid
+  asignacion_id String     @db.Uuid
+  orden         Int        @db.SmallInt
+  tipo          String     @db.VarChar(10)
+  documento     String?    @db.VarChar(15)
+  nombres       String     @db.VarChar(150)
+  dedicacion    String?    @db.VarChar(40)
+  nota          String?
+  reemplaza_a   String?    @db.VarChar(150)
+  manual        Boolean    @default(false)
+  motivo        String?    @db.VarChar(30)
+  detalle       String?
+  asignacion    asignacion @relation(fields: [asignacion_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_variacion_asignacion")
+
+  @@index([asignacion_id, orden], map: "ix_variacion_asignacion")
 }

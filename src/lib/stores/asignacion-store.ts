@@ -13,9 +13,11 @@ import {
   aplicarReglaDedicacion,
   cursosBase,
   esImportada,
+  type Variacion,
 } from "@/lib/tipos";
-import { editableAhora, REABRIBLES } from "@/lib/plazos";
+import { editableAhora, edicionAdminAbierta, EDITABLES_POR_ADMIN, REABRIBLES } from "@/lib/plazos";
 import { useConfigStore } from "@/lib/stores/config-store";
+import { useSesionStore } from "@/lib/stores/sesion-store";
 
 /** Quién ejecuta la acción; se graba en la bitácora tal cual. */
 export interface Autor {
@@ -41,6 +43,8 @@ interface AsignacionStore {
   agregarDocente: (asignacionId: string) => string | null;
   actualizarDocente: (asignacionId: string, docente: Docente) => void;
   eliminarDocente: (asignacionId: string, docenteId: string) => Docente | null;
+  /** Docentes que salen y que llegan (SPEC-027): se guarda la lista entera. */
+  guardarVariaciones: (asignacionId: string, variaciones: Variacion[]) => void;
 
   // ---- Ciclo de vida -------------------------------------------------
   /** El coordinador entrega. Sube la versión y congela la asignación. */
@@ -52,6 +56,11 @@ interface AsignacionStore {
   devolver: (id: string, autor: Autor, nota: string, plazo: string) => void;
   /** Reabre una asignación ya aprobada porque cambiaron los parámetros. */
   reabrirPorParametros: (id: string, autor: Autor, nota: string, plazo: string) => void;
+  /**
+   * El administrador abre la edición de lo entregado (SPEC-023). Deja el
+   * motivo en la bitácora; el estado no cambia.
+   */
+  abrirEdicionAdmin: (id: string, autor: Autor, nota: string) => void;
   /**
    * Reabre varias de una vez, con el mismo motivo y plazo. Devuelve cuántas
    * se reabrieron: las que ya no estaban aprobadas se ignoran.
@@ -100,7 +109,10 @@ export const useAsignacionStore = create<AsignacionStore>()(
        * El estado y el reloj (SPEC-022): con la convocatoria cerrada o el
        * plazo de corrección vencido, ya no. El servidor aplica la misma regla.
        */
-      const editableYa = (a: Asignacion) => editableAhora(a, useConfigStore.getState().convocatorias);
+      const editableYa = (a: Asignacion) =>
+        useSesionStore.getState().sesion?.usuario.rol === "ADMIN"
+          ? edicionAdminAbierta(a)
+          : editableAhora(a, useConfigStore.getState().convocatorias);
 
       /** Cambia de estado y deja constancia, en una sola operación. */
       const registrar = (
@@ -163,11 +175,16 @@ export const useAsignacionStore = create<AsignacionStore>()(
           return eliminado;
         },
 
+        guardarVariaciones: (asignacionId, variaciones) => {
+          editarSiSePuede(asignacionId, (a) => ({ ...a, variaciones }));
+        },
+
         // ---- Ciclo de vida ---------------------------------------------
 
         enviar: (id, autor) => {
           const a = get().asignaciones.find((x) => x.id === id);
-          if (!a || !editableYa(a)) return;
+          // Entregar es del coordinador: la edición del administrador no envía.
+          if (!a || !editableAhora(a, useConfigStore.getState().convocatorias)) return;
 
           // Un reenvío es el que sale de una corrección: se distingue en la
           // bitácora porque cuenta una historia distinta de la del primer envío.
@@ -261,6 +278,18 @@ export const useAsignacionStore = create<AsignacionStore>()(
             },
             { plazoCorreccion: plazo }
           );
+        },
+
+        abrirEdicionAdmin: (id, autor, nota) => {
+          const a = get().asignaciones.find((x) => x.id === id);
+          if (!a || !nota.trim() || !EDITABLES_POR_ADMIN.includes(a.estado) || esImportada(a)) return;
+          registrar(id, a.estado, {
+            tipo: "editada_por_admin",
+            autor: autor.nombres,
+            rolAutor: autor.rol,
+            nota: nota.trim(),
+            version: a.version,
+          });
         },
 
         reabrirVarias: (ids, autor, nota, plazo, novedadId) => {

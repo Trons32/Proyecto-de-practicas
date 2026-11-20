@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
 import { useSesionStore } from "@/lib/stores/sesion-store";
-import { calcularTotales, validarDocente } from "@/lib/calculo";
+import { calcularTotales, descuadreHoras, validarDocente } from "@/lib/calculo";
 import { legible } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import type { Asignacion, Docente } from "@/lib/tipos";
-import { bloqueoPorPlazo, editableAhora } from "@/lib/plazos";
+import { bloqueoPorPlazo, edicionAdminAbierta, editableAhora } from "@/lib/plazos";
 import { esEditable } from "@/lib/tipos";
 import type { Convocatoria } from "@/lib/convocatoria";
 import { useConfigStore } from "@/lib/stores/config-store";
@@ -18,7 +18,8 @@ import ResumenHoras from "@/components/ResumenHoras";
 import Encabezado from "@/components/Encabezado";
 import Modal from "@/components/Modal";
 import NoEncontrada from "../../../NoEncontrada";
-import { Boton } from "@/components/ui";
+import { Boton, Campo } from "@/components/ui";
+import { sileo } from "@/lib/toast";
 import { FiArrowLeft, FiCheckCircle, FiAlertCircle, FiAlertTriangle, FiClock, FiLock } from "@/components/iconos";
 
 export default function VistaDocente({
@@ -33,6 +34,7 @@ export default function VistaDocente({
   const hidratado = useAsignacionStore((s) => s.hidratado);
   const actualizarDocente = useAsignacionStore((s) => s.actualizarDocente);
   const esAdministrador = useSesionStore((s) => s.sesion?.usuario.rol === "ADMIN");
+  const nombreUsuario = useSesionStore((s) => s.sesion?.usuario.nombres ?? "");
   const convocatorias = useConfigStore((s) => s.convocatorias);
 
   const docente = asignacion?.docentes.find((d) => d.id === docenteId);
@@ -59,7 +61,7 @@ export default function VistaDocente({
 
   const posicion = asignacion.docentes.findIndex((d) => d.id === docenteId) + 1;
 
-  return <FichaDocente key={docente.id} asignacion={asignacion} docente={docente} posicion={posicion} config={config} actualizarDocente={actualizarDocente} router={router} soloLectura={esAdministrador || !editableAhora(asignacion, convocatorias)} motivoLectura={esAdministrador ? null : motivoSoloLectura(asignacion, convocatorias)} />;
+  return <FichaDocente key={docente.id} asignacion={asignacion} docente={docente} posicion={posicion} config={config} actualizarDocente={actualizarDocente} router={router} soloLectura={esAdministrador ? !edicionAdminAbierta(asignacion) : !editableAhora(asignacion, convocatorias)} autorExcepcion={esAdministrador && edicionAdminAbierta(asignacion) ? nombreUsuario : null} motivoLectura={esAdministrador ? null : motivoSoloLectura(asignacion, convocatorias)} />;
 }
 
 /** Por qué el coordinador ve la ficha sin poder editarla (SPEC-022). */
@@ -72,7 +74,7 @@ function motivoSoloLectura(a: Asignacion, convocatorias: Record<string, Convocat
   return bloqueoPorPlazo(a, convocatorias[a.periodo]);
 }
 
-function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente, router, soloLectura, motivoLectura }: {
+function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente, router, soloLectura, motivoLectura, autorExcepcion }: {
   asignacion: Asignacion;
   docente: Docente;
   posicion: number;
@@ -81,6 +83,8 @@ function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente
   router: ReturnType<typeof useRouter>;
   soloLectura: boolean;
   motivoLectura: string | null;
+  /** El administrador con la edición abierta: puede autorizar descuadres (SPEC-024). */
+  autorExcepcion: string | null;
 }) {
   // El borrador vive solo en esta pantalla: escribir no persiste nada hasta
   // que el coordinador pulse Guardar sección. Así evita escrituras parciales
@@ -95,6 +99,35 @@ function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente
   const errores = analisis.hallazgos.filter((h) => h.severidad === "error").length;
   const guardarCambios = (d: Docente) => {
     if (!soloLectura) actualizarDocente(asignacion.id, d);
+  };
+  /** El docente que el administrador quiere guardar con las horas descuadradas. */
+  const [porExceptuar, setPorExceptuar] = useState<Docente | null>(null);
+  const [motivoExcepcion, setMotivoExcepcion] = useState("");
+  const totalesExcepcion = porExceptuar ? calcularTotales(porExceptuar, config) : null;
+  const descuadreExcepcion = totalesExcepcion ? descuadreHoras(totalesExcepcion) : null;
+  const cerrarExcepcion = () => {
+    setPorExceptuar(null);
+    setMotivoExcepcion("");
+  };
+  const guardarConExcepcion = () => {
+    if (!porExceptuar || !totalesExcepcion || !autorExcepcion) return;
+    if (!motivoExcepcion.trim()) {
+      sileo.error({ title: "Falta el motivo", description: "Explique por qué este docente no cumple las horas." });
+      return;
+    }
+    const conExcepcion: Docente = {
+      ...porExceptuar,
+      excepcionHoras: {
+        motivo: motivoExcepcion.trim(),
+        autor: autorExcepcion,
+        fecha: new Date().toISOString(),
+        horas: totalesExcepcion.totalSemanal,
+      },
+    };
+    setBorrador(conExcepcion);
+    actualizarDocente(asignacion.id, conExcepcion);
+    cerrarExcepcion();
+    sileo.success({ title: "Guardado con excepción", description: "El docente no cumple las horas; queda el motivo." });
   };
   const tieneError = (patron: RegExp | string[]) =>
     analisis.hallazgos.some((h) =>
@@ -196,6 +229,7 @@ function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente
             onGuardar={guardarCambios}
             pasoActivo={pasoActivo}
             soloLectura={soloLectura}
+            onExcepcion={autorExcepcion ? setPorExceptuar : undefined}
           />
         </div>
 
@@ -203,6 +237,31 @@ function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente
           <ResumenHoras t={analisis.totales} />
         </aside>
       </div>
+      <Modal abierto={porExceptuar !== null} onCerrar={cerrarExcepcion} titulo="El docente no está cumpliendo las horas" tamano="lg">
+        {totalesExcepcion && descuadreExcepcion !== null && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden />
+            <p className="text-sm text-amber-900">
+              Tiene <strong>{totalesExcepcion.totalSemanal} h</strong> de {totalesExcepcion.maxHoras} h:{" "}
+              {descuadreExcepcion > 0 ? `le sobran ${descuadreExcepcion} h` : `le faltan ${-descuadreExcepcion} h`}. Puede
+              guardarlo como excepción; el coordinador no podría.
+            </p>
+          </div>
+        )}
+        <Campo etiqueta="Motivo de la excepción" requerido ayuda="Queda en la ficha del docente, a su nombre. Si las horas cambian, hay que autorizarla de nuevo.">
+          <textarea
+            className="campo min-h-28 resize-y"
+            value={motivoExcepcion}
+            onChange={(e) => setMotivoExcepcion(e.target.value)}
+            placeholder="Ej.: Comisión de estudios aprobada por el Consejo Académico."
+            data-foco-inicial
+          />
+        </Campo>
+        <div className="mt-6 flex gap-3">
+          <Boton variante="secundario" className="flex-1" onClick={cerrarExcepcion}>Cancelar</Boton>
+          <Boton className="flex-1" onClick={guardarConExcepcion}>Guardar con excepción</Boton>
+        </div>
+      </Modal>
       <Modal abierto={revisionAbierta} onCerrar={() => setRevisionAbierta(false)} titulo={errores > 0 ? "Información pendiente" : "Revisión de la ficha"}>
         {analisis.hallazgos.length === 0 ? (
           <div className="flex items-center gap-3 rounded-xl bg-cecar-50 p-4 text-sm text-cecar-800"><FiCheckCircle className="h-5 w-5 shrink-0" aria-hidden /> La información del docente está completa.</div>

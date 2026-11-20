@@ -12,6 +12,8 @@ import { CLAVES } from "@/lib/datos/almacen";
 import { CambioRechazado, DatoRechazado, esRechazoDeLaBase, guardarAsignaciones, guardarConfiguracion, guardarNovedades } from "@/lib/servidor/escribir";
 import { leerAsignaciones, leerConfiguracion, leerNovedades } from "@/lib/servidor/leer";
 import { usuarioActual } from "@/lib/servidor/sesion";
+import { aUuid } from "@/lib/servidor/ids";
+import { alcanceDe, dentroDelAlcance, filtroAlcance } from "@/lib/servidor/alcance";
 
 /** Deben coincidir con `version` de cada store. */
 const VERSIONES = { asignaciones: 4, configuracion: 2, novedades: 1 } as const;
@@ -25,11 +27,15 @@ const error = (status: number, mensaje: string) => Response.json({ mensaje }, { 
 export async function GET(_req: Request, ctx: { params: Promise<{ clave: string }> }) {
   const nombre = nombreDe((await ctx.params).clave);
   if (!nombre) return error(404, "Clave desconocida.");
-  if (!(await usuarioActual())) return error(401, "Inicie sesión.");
+  const usuario = await usuarioActual();
+  if (!usuario) return error(401, "Inicie sesión.");
 
   try {
+    // Un coordinador solo recibe sus asignaciones: las de los demás
+    // programas no le corresponden ni en el historial.
+    const alcance = nombre === "asignaciones" ? await alcanceDe(usuario) : null;
     const state =
-      nombre === "asignaciones" ? await leerAsignaciones()
+      nombre === "asignaciones" ? await leerAsignaciones(alcance ? { donde: filtroAlcance(alcance) } : {})
       : nombre === "configuracion" ? await leerConfiguracion()
       : await leerNovedades();
     return Response.json({ state, version: VERSIONES[nombre] });
@@ -57,6 +63,17 @@ export async function PUT(req: Request, ctx: { params: Promise<{ clave: string }
 
   try {
     if (nombre === "asignaciones") {
+      // Lo que ya existe tiene que ser suyo: sin esto, quien conozca el id
+      // de otra asignación podría escribirla o borrarla.
+      const alcance = await alcanceDe(usuario);
+      if (alcance) {
+        const ids = [
+          ...((cuerpo.asignaciones ?? []) as { id: string }[]).map((a) => a.id),
+          ...((cuerpo.borrados ?? []) as string[]),
+        ].filter((id): id is string => typeof id === "string").map(aUuid);
+        const ajenas = (await leerAsignaciones({ ids })).asignaciones.filter((a) => !dentroDelAlcance(a, alcance));
+        if (ajenas.length) return error(403, "Esa asignación es de otro programa.");
+      }
       await guardarAsignaciones(cuerpo.asignaciones ?? [], cuerpo.borrados ?? [], usuario);
     } else if (nombre === "configuracion") {
       await guardarConfiguracion(cuerpo.state);

@@ -165,12 +165,14 @@ function generar(r: Respaldo): string {
       const doc = d.documento.trim();
       const persona = /^\d{6,15}$/.test(doc) ? `(SELECT id FROM public.docente WHERE documento = '${doc}')` : "NULL";
       l.push(
-        `INSERT INTO public.docente_asignado (id, asignacion_id, docente_id, orden, documento, nombres, nivel_formacion, perfil_profesional, categoria_minciencias, activo_sector_externo, sector_ejerce, tipo_contrato, dedicacion, categoria, sede, evaluacion_docente, observaciones, preparacion, atencion, comunidades) VALUES (` +
+        `INSERT INTO public.docente_asignado (id, asignacion_id, docente_id, orden, documento, nombres, nivel_formacion, perfil_profesional, categoria_minciencias, activo_sector_externo, sector_ejerce, tipo_contrato, dedicacion, categoria, sede, evaluacion_docente, observaciones, preparacion, atencion, comunidades, excepcion_motivo, excepcion_autor, excepcion_fecha, excepcion_horas) VALUES (` +
           [
             uid(d.id), uid(a.id), persona, i + 1, txt(doc), txt(d.nombres), txt(d.nivelFormacion),
             txt(d.perfilProfesional), txt(d.categoriaMinciencias), txt(d.activoSectorExterno),
             txt(d.sectorEjerce), txt(d.tipoContrato), txt(d.dedicacion), txt(d.categoria), txt(d.sede),
             num(d.evaluacionDocente), txt(d.observaciones), num(d.preparacion), num(d.atencion), num(d.comunidades),
+            d.excepcionHoras ? txt(d.excepcionHoras.motivo) : "NULL", d.excepcionHoras ? txt(d.excepcionHoras.autor) : "NULL",
+            d.excepcionHoras ? txt(d.excepcionHoras.fecha) : "NULL", d.excepcionHoras ? num(d.excepcionHoras.horas) : "NULL",
           ].join(", ") +
           ");"
       );
@@ -194,6 +196,18 @@ function generar(r: Respaldo): string {
           `INSERT INTO public.actividad (id, docente_asignado_id, clase, orden, rol_id, horas) VALUES (${uid(x.id)}, ${uid(d.id)}, '${x.clase}', ${j + 1}, ${num(x.rolId)}, ${num(x.horas)});`
         );
       });
+    });
+
+    // Salientes y nuevos (SPEC-027).
+    (a.variaciones ?? []).forEach((v, j) => {
+      l.push(
+        `INSERT INTO public.variacion_docente (id, asignacion_id, orden, tipo, documento, nombres, dedicacion, nota, reemplaza_a, manual, motivo, detalle) VALUES (` +
+          [
+            uid(`${a.id}:${v.id}`), uid(a.id), j + 1, txt(v.tipo), txt(v.documento), txt(v.nombres.trim() || "—"),
+            txt(v.dedicacion), txt(v.nota), v.tipo === "nuevo" ? txt(v.reemplazaA) : "NULL", v.manual ? "true" : "false", txt(v.motivo), txt(v.detalle),
+          ].join(", ") +
+          ");"
+      );
     });
 
     // Línea base de la proyección (SPEC-009), si la asignación ya se aprobó.

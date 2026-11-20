@@ -21,7 +21,7 @@ import { useAsignacionStore } from "@/lib/stores/asignacion-store";
 import { completarDocente, type FichaDirectorio } from "@/lib/directorio";
 import { useDirectorio } from "@/lib/usar-directorio";
 import SugerenciasCedula from "./SugerenciasCedula";
-import { buscarFicha, catalogoDeCursos, completarCurso, fichasDePrograma, grupoSiguiente, resumenCurso } from "@/lib/cursos-conocidos";
+import { buscarFicha, catalogoDeCursos, completarCurso, fichasDePrograma, grupoSiguiente, opcionesGrupo, resumenCurso } from "@/lib/cursos-conocidos";
 import {
   Docente,
   Curso,
@@ -32,7 +32,7 @@ import {
   nuevoCurso,
   aplicarReglaDedicacion,
 } from "@/lib/tipos";
-import { calcularTotales, validarDocente, Hallazgo, Totales } from "@/lib/calculo";
+import { calcularTotales, descuadreHoras, excepcionVigente, validarDocente, Hallazgo, Totales } from "@/lib/calculo";
 import { REGLAS, type CamposDocente } from "@/lib/esquema-docente";
 import { Campo, Contador, Entrada, Seleccion, Seccion, SelectorBuscable, Boton, Insignia, type OpcionBuscable } from "./ui";
 import { sileo } from "@/lib/toast";
@@ -67,6 +67,7 @@ export default function FormularioDocente({
   onGuardar,
   pasoActivo,
   soloLectura = false,
+  onExcepcion,
 }: {
   docente: Docente;
   totales: Totales;
@@ -76,6 +77,11 @@ export default function FormularioDocente({
   onGuardar: (d: Docente) => void;
   pasoActivo: number;
   soloLectura?: boolean;
+  /**
+   * Solo para el administrador con la edición abierta (SPEC-024): en vez de
+   * bloquear un descuadre de horas, se lo pasa para que lo autorice con motivo.
+   */
+  onExcepcion?: (d: Docente) => void;
 }) {
   const [filasPendientes, setFilasPendientes] = useState<Set<string>>(new Set());
   const set = <K extends keyof Docente>(campo: K, valor: Docente[K]) =>
@@ -321,7 +327,8 @@ export default function FormularioDocente({
     const copia: Curso = {
       ...curso,
       id: nuevoCurso().id,
-      grupo: grupoSiguiente(curso.grupo, GRUPOS),
+      // BL1 → BL2; después de BL2 o de BL1-BL2 no hay un bloque que siga.
+      grupo: grupoSiguiente(curso.grupo, [...GRUPOS, "BL1", "BL2"]),
       estudiantes: null,
     };
     const i = docente.cursos.findIndex((x) => x.id === curso.id);
@@ -458,13 +465,41 @@ export default function FormularioDocente({
     // por encima del tope no se guarda desde ninguna (SPEC-020). Antes solo
     // lo revisaba la pestaña Apoyo, y Cursos o Descargas guardaban 15 h de 12.
     const { totalSemanal, maxHoras } = totalesActuales;
-    if (maxHoras !== null && totalSemanal > maxHoras) {
+    // Las horas tienen que cuadrar (SPEC-024). Pasarse bloquea desde
+    // cualquier pestaña; quedarse corto, al cerrar la ficha en Apoyo: antes
+    // de eso el total todavía se está armando.
+    const descuadre = descuadreHoras(totalesActuales);
+    const descuadreQueBloquea =
+      descuadre !== null && totalSemanal > 0 && !excepcionVigente(docente, totalesActuales) &&
+      (descuadre > 0 || seccion === "apoyo");
+    if (descuadreQueBloquea && onExcepcion) {
+      const otros = hallazgosActuales.filter((h) => h.campo !== "totalSemanal");
+      if (!rhfValido || filasIncompletas.size > 0 || tieneErrorDeSeccion(seccion, otros)) {
+        sileo.error({ title: "Revise los campos marcados", description: "Hay datos pendientes o inválidos en esta sección." });
+        return;
+      }
+      onExcepcion(docente);
+      setFilasPendientes(new Set());
+      return;
+    }
+    if (maxHoras !== null && totalSemanal > maxHoras && !excepcionVigente(docente, totalesActuales)) {
       sileo.error({
         title: "No se guardó: se superó el máximo de horas",
         description:
           `${totalSemanal} h asignadas sobre un máximo de ${maxHoras} h para ` +
           `${docente.dedicacion.replace(/_/g, " ").toLowerCase()}. Reduzca ${totalSemanal - maxHoras} h ` +
-          "en cursos, descargas, actividades o apoyo.",
+          "en cursos, descargas, actividades o apoyo." +
+          (onExcepcion ? "" : " Solo el administrador puede autorizar una excepción."),
+      });
+      return;
+    }
+    if (descuadreQueBloquea && descuadre !== null && descuadre < 0) {
+      sileo.error({
+        title: "No se guardó: faltan horas",
+        description:
+          `${totalSemanal} h asignadas de ${maxHoras} h para ` +
+          `${docente.dedicacion.replace(/_/g, " ").toLowerCase()}. Complete ${-descuadre} h ` +
+          "en cursos, descargas, actividades o apoyo. Solo el administrador puede autorizar una excepción.",
       });
       return;
     }
@@ -932,7 +967,7 @@ export default function FormularioDocente({
                   <Campo etiqueta="Grupo / bloque">
                     <Seleccion
                       id={`curso-grupo-${c.id}`}
-                      opciones={GRUPOS}
+                      opciones={opcionesGrupo(GRUPOS, c.grupo)}
                       value={c.grupo}
                       onChange={(e) => setCurso(c.id, { grupo: e.target.value })}
                     />
