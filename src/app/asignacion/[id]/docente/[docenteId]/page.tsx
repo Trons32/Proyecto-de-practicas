@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAsignacionStore } from "@/lib/stores/asignacion-store";
 import { useSesionStore } from "@/lib/stores/sesion-store";
-import { calcularTotales, descuadreHoras, validarDocente } from "@/lib/calculo";
+import { calcularTotales, descuadreHoras, exigeDescargasYApoyo, validarDocente } from "@/lib/calculo";
 import { legible } from "@/lib/resumen";
 import { useConfiguracion } from "@/lib/usar-configuracion";
 import type { Asignacion, Docente } from "@/lib/tipos";
@@ -135,13 +135,15 @@ function FichaDocente({ asignacion, docente, posicion, config, actualizarDocente
     );
   const hayCurso = borrador.cursos.some((c) => c.nombreCurso.trim() || c.codigoCurso.trim() || c.intensidadHoraria);
   const hayDescarga = borrador.descargas.some((d) => d.rolId !== null || d.horas > 0);
-  const hayAdministrativa = borrador.administrativas.some((a) => a.rolId !== null || a.horas > 0);
+  // Descargas y apoyo solo se exigen a tiempo completo y medio tiempo; las
+  // actividades a nadie (SPEC-030). Vacío y opcional no es un paso pendiente.
+  const exige = exigeDescargasYApoyo(borrador.dedicacion);
   const pasos = [
     { etiqueta: "Docente", completo: !tieneError(["documento", "nombres", "nivelFormacion", "tipoContrato", "dedicacion", "categoria", "sede", "evaluacionDocente"]) },
     { etiqueta: "Cursos", completo: hayCurso && !tieneError(/^(cursos|curso-)/) },
-    { etiqueta: "Descargas", completo: hayDescarga && !tieneError(/^descarga-/) },
-    { etiqueta: "Actividades", completo: hayAdministrativa && !tieneError(/^admin-/) },
-    { etiqueta: "Apoyo", completo: borrador.preparacion + borrador.atencion + borrador.comunidades > 0 },
+    { etiqueta: "Descargas", completo: (hayDescarga || !exige) && !tieneError(/^descarga-/) },
+    { etiqueta: "Actividades", completo: !tieneError(/^admin-/) },
+    { etiqueta: "Apoyo", completo: !exige || borrador.preparacion + borrador.atencion + borrador.comunidades > 0 },
   ];
   const pasosPendientes = pasos.filter((paso) => !paso.completo).length;
   const seccionDeHallazgo = (campo: string) => {

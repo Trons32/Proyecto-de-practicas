@@ -137,6 +137,20 @@ export const descuadreHoras = (t: Pick<Totales, "totalSemanal" | "maxHoras">): n
   t.maxHoras === null || t.totalSemanal === t.maxHoras ? null : t.totalSemanal - t.maxHoras;
 
 /**
+ * Solo tiempo completo y medio tiempo llevan descargas y apoyo académico
+ * obligatorios, y solo para ellos el tope es un total exacto (SPEC-030).
+ * Cátedra, hora labor y tutores no tienen apoyo (su regla es 0 h) y sus
+ * 12 h son un máximo: exigirles cuadrar dejaba asignaciones sin poder
+ * enviarse por un catedrático con 8 h. Es la única definición.
+ */
+export const exigeDescargasYApoyo = (dedicacion: string): boolean =>
+  dedicacion === "TIEMPO_COMPLETO" || dedicacion === "MEDIO_TIEMPO";
+
+/** Sin rol y sin horas: lo que queda al pulsar «Agregar» y no llenar nada. */
+export const filaVacia = (x: { rolId: number | null; horas: number }): boolean =>
+  x.rolId === null && !(x.horas > 0);
+
+/**
  * La excepción del administrador vale solo para el total que autorizó.
  * Se compara redondeado a un decimal, como lo guarda la base.
  */
@@ -210,8 +224,10 @@ export function validarDocente(d: Docente, t: Totales): Hallazgo[] {
   // Las horas tienen que cuadrar con la dedicación, por arriba y por abajo
   // (SPEC-024). Solo el administrador puede dejar pasar un descuadre, con
   // motivo: entonces queda como aviso, para que se siga viendo.
+  const exige = exigeDescargasYApoyo(d.dedicacion);
   const descuadre = descuadreHoras(t);
-  if (descuadre !== null && t.maxHoras !== null && t.totalSemanal > 0) {
+  const faltanteQueCuenta = descuadre !== null && (descuadre > 0 || exige);
+  if (faltanteQueCuenta && descuadre !== null && t.maxHoras !== null && t.totalSemanal > 0) {
     const ded = d.dedicacion.replace(/_/g, " ").toLowerCase();
     const texto =
       descuadre > 0
@@ -226,6 +242,24 @@ export function validarDocente(d: Docente, t: Totales): Hallazgo[] {
           }
         : { campo: "totalSemanal", mensaje: texto, severidad: "error" }
     );
+  }
+
+  if (exige) {
+    const ded = d.dedicacion.replace(/_/g, " ").toLowerCase();
+    if (!d.descargas.some((x) => x.rolId !== null && x.horas > 0)) {
+      h.push({
+        campo: "descarga-requerida",
+        mensaje: "Un docente de " + ded + " debe tener al menos una descarga.",
+        severidad: "error",
+      });
+    }
+    if (t.apoyoAcademico <= 0) {
+      h.push({
+        campo: "apoyo",
+        mensaje: "Un docente de " + ded + " debe tener horas de apoyo académico.",
+        severidad: "error",
+      });
+    }
   }
 
   d.descargas.forEach((x, i) => {
@@ -274,7 +308,10 @@ export function validarDocente(d: Docente, t: Totales): Hallazgo[] {
     });
   }
 
-  cursosConDatos.forEach((c, i) => {
+  // El número es la posición en la ficha, contando los cursos vacíos: si no,
+  // «Curso 2» del aviso no era el segundo que ve el coordinador.
+  d.cursos.forEach((c, i) => {
+    if (!cursosConDatos.includes(c)) return;
     const et = "Curso " + (i + 1);
     if (!c.nombreCurso.trim())
       h.push({ campo: "curso-" + i, mensaje: et + ": falta el nombre.", severidad: "error" });
@@ -294,19 +331,27 @@ export function validarDocente(d: Docente, t: Totales): Hallazgo[] {
       h.push({ campo: "curso-" + i, mensaje: et + ": falta la modalidad.", severidad: "error" });
   });
 
-  // Mismo curso y mismo grupo repetidos
-  const conteo = new Map<string, number>();
+  // Mismo curso, mismo grupo y mismo programa repetidos. El programa entra
+  // en la clave porque un curso común (p. ej. 1467 Taller de Lengua II) se
+  // dicta al mismo docente en varios programas, cada uno con su grupo 1 y su
+  // horario: sin él, el pilotaje lo marcaba repetido y la ficha no se cerraba.
+  const programaDe = (c: (typeof cursosConDatos)[number]) =>
+    (c.codigoPrograma?.trim() || c.nombrePrograma?.trim() || "").toUpperCase();
+  const conteo = new Map<string, { n: number; cod: string; grp: string; prog: string }>();
   cursosConDatos.forEach((c) => {
     if (!c.codigoCurso.trim()) return;
-    const k = c.codigoCurso.trim() + "|" + c.grupo.trim();
-    conteo.set(k, (conteo.get(k) ?? 0) + 1);
+    const cod = c.codigoCurso.trim();
+    const grp = c.grupo.trim();
+    const k = cod + "|" + grp + "|" + programaDe(c);
+    const previo = conteo.get(k);
+    conteo.set(k, { n: (previo?.n ?? 0) + 1, cod, grp, prog: c.nombrePrograma?.trim() ?? "" });
   });
-  conteo.forEach((n, k) => {
+  conteo.forEach(({ n, cod, grp, prog }) => {
     if (n > 1) {
-      const [cod, grp] = k.split("|");
       h.push({
         campo: "cursos",
-        mensaje: "El curso " + cod + " grupo " + (grp || "—") + " está repetido.",
+        mensaje:
+          "El curso " + cod + " grupo " + (grp || "—") + (prog ? " de " + prog : "") + " está repetido.",
         severidad: "error",
       });
     }

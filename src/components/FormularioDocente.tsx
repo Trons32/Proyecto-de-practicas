@@ -32,7 +32,7 @@ import {
   nuevoCurso,
   aplicarReglaDedicacion,
 } from "@/lib/tipos";
-import { calcularTotales, descuadreHoras, excepcionVigente, validarDocente, Hallazgo, Totales } from "@/lib/calculo";
+import { calcularTotales, descuadreHoras, excepcionVigente, exigeDescargasYApoyo, filaVacia, validarDocente, Hallazgo, Totales } from "@/lib/calculo";
 import { REGLAS, type CamposDocente } from "@/lib/esquema-docente";
 import { Campo, Contador, Entrada, Seleccion, Seccion, SelectorBuscable, Boton, Insignia, type OpcionBuscable } from "./ui";
 import { sileo } from "@/lib/toast";
@@ -424,12 +424,52 @@ export default function FormularioDocente({
       cursos: (campo: string) => campo === "cursos" || campo.startsWith("curso-"),
       descargas: (campo: string) => campo.startsWith("descarga-"),
       actividades: (campo: string) => campo.startsWith("admin-"),
-      apoyo: (campo: string) => campo === "totalSemanal",
+      apoyo: (campo: string) => campo === "totalSemanal" || campo === "apoyo",
     }[seccion];
     if (hallazgosActuales.some((h) => h.severidad === "error" && campos(h.campo))) return true;
     return false;
   };
+  /**
+   * El aviso dice qué falta y dónde, no solo que algo falta: con un
+   * «Revise los campos marcados» el coordinador tenía que revisar todo
+   * para encontrar el error, sobre todo con los cursos plegados.
+   */
+  const avisarPendientes = (
+    seccion: "docente" | "cursos" | "descargas" | "actividades" | "apoyo",
+    hallazgosActuales: Hallazgo[],
+    filasIncompletas: Set<string>,
+    d: Docente
+  ) => {
+    const enSeccion = hallazgosActuales.filter(
+      (h) => h.severidad === "error" && tieneErrorDeSeccion(seccion, [h])
+    );
+    const motivos = enSeccion.map((h) => h.mensaje);
+    // Un curso sin ningún dato no sale en los hallazgos: el motor lo ignora.
+    if (seccion === "cursos") {
+      d.cursos.forEach((c, i) => {
+        const vacio = !c.nombreCurso.trim() && !c.codigoCurso.trim() && !c.intensidadHoraria;
+        if (filasIncompletas.has(c.id) && vacio) motivos.push(`Curso ${i + 1}: está vacío; llénelo o quítelo.`);
+      });
+    }
+    const unicos = [...new Set(motivos)];
+    const lista = unicos.slice(0, 3).join(" ") + (unicos.length > 3 ? ` Y ${unicos.length - 3} más.` : "");
+    sileo.error({
+      title: unicos.length === 1 ? "Falta corregir un dato" : `Faltan corregir ${unicos.length || "algunos"} datos`,
+      description: lista || "Hay datos pendientes o inválidos en esta sección.",
+    });
+  };
+  const docenteEnForma = docente;
   const guardarSeccion = async (seccion: "docente" | "cursos" | "descargas" | "actividades" | "apoyo") => {
+    // Una fila agregada y no llenada no es un dato pendiente: se descarta
+    // (SPEC-030). Antes bloqueaba guardar a quien no tiene descargas.
+    const descargasLlenas = docenteEnForma.descargas.filter((x) => !filaVacia(x));
+    const actividadesLlenas = docenteEnForma.administrativas.filter((x) => !filaVacia(x));
+    const docente: Docente =
+      descargasLlenas.length === docenteEnForma.descargas.length &&
+      actividadesLlenas.length === docenteEnForma.administrativas.length
+        ? docenteEnForma
+        : { ...docenteEnForma, descargas: descargasLlenas, administrativas: actividadesLlenas };
+    if (docente !== docenteEnForma) onCambio(docente);
     // trigger activa los mensajes de RHF incluso si el usuario fue directo al
     // botón Guardar; los hallazgos cubren cursos y actividades anidadas.
     const rhfValido = seccion === "docente" ? await trigger(camposDeDocente) : true;
@@ -460,6 +500,14 @@ export default function FormularioDocente({
       );
       abrir(conError.map((c) => c.id));
       if (conError[0]) enfocar.current = `curso-nombre-${conError[0].id}`;
+    } else if (seccion === "descargas" || seccion === "actividades") {
+      const filas = seccion === "descargas" ? docente.descargas : docente.administrativas;
+      const primera = filas.find((x) => filasIncompletas.has(x.id));
+      if (primera) {
+        // La fila ya está pintada: el efecto de `enfocar` no volvería a correr.
+        document.getElementById(`rol-${primera.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+        document.getElementById(`rol-${primera.id}`)?.focus({ preventScroll: true });
+      }
     }
     // Guardar persiste el docente entero, no solo la pestaña: con el total
     // por encima del tope no se guarda desde ninguna (SPEC-020). Antes solo
@@ -471,11 +519,11 @@ export default function FormularioDocente({
     const descuadre = descuadreHoras(totalesActuales);
     const descuadreQueBloquea =
       descuadre !== null && totalSemanal > 0 && !excepcionVigente(docente, totalesActuales) &&
-      (descuadre > 0 || seccion === "apoyo");
+      (descuadre > 0 || (seccion === "apoyo" && exigeDescargasYApoyo(docente.dedicacion)));
     if (descuadreQueBloquea && onExcepcion) {
       const otros = hallazgosActuales.filter((h) => h.campo !== "totalSemanal");
       if (!rhfValido || filasIncompletas.size > 0 || tieneErrorDeSeccion(seccion, otros)) {
-        sileo.error({ title: "Revise los campos marcados", description: "Hay datos pendientes o inválidos en esta sección." });
+        avisarPendientes(seccion, otros, filasIncompletas, docente);
         return;
       }
       onExcepcion(docente);
@@ -504,7 +552,7 @@ export default function FormularioDocente({
       return;
     }
     if (!rhfValido || filasIncompletas.size > 0 || tieneErrorDeSeccion(seccion, hallazgosActuales)) {
-      sileo.error({ title: "Revise los campos marcados", description: "Hay datos pendientes o inválidos en esta sección." });
+      avisarPendientes(seccion, hallazgosActuales, filasIncompletas, docente);
       return;
     }
     onGuardar(docente);
@@ -524,7 +572,9 @@ export default function FormularioDocente({
           ? { tono: "text-rose-700", icono: FiAlertCircle, texto: `${totalSemanal} h de ${maxHoras} h · excede por ${totalSemanal - maxHoras} h. Ajuste antes de guardar.` }
           : totalSemanal === maxHoras
             ? { tono: "text-cecar-700", icono: FiCheckCircle, texto: `${totalSemanal} h de ${maxHoras} h · completo` }
-            : { tono: "text-[var(--color-texto-suave)]", icono: null, texto: `${totalSemanal} h de ${maxHoras} h · faltan ${maxHoras - totalSemanal} h` };
+            : exigeDescargasYApoyo(docente.dedicacion)
+              ? { tono: "text-[var(--color-texto-suave)]", icono: null, texto: `${totalSemanal} h de ${maxHoras} h · faltan ${maxHoras - totalSemanal} h` }
+              : { tono: "text-[var(--color-texto-suave)]", icono: null, texto: `${totalSemanal} h de un máximo de ${maxHoras} h` };
     return (
       <div className="mt-6 -mx-5 -mb-5 flex flex-wrap items-center justify-between gap-3 rounded-b-xl bg-cecar-50/60 px-5 py-3">
         <p className={`flex items-center gap-1.5 text-sm ${estado?.tono ?? ""}`} aria-live="polite">

@@ -379,6 +379,7 @@ npx tsx src/lib/verificar-transiciones.ts   # si tocaste el ciclo de vida o el s
 npx tsx src/lib/verificar-importacion.ts "<ASIGNACION_IS_2026_2PV3.xlsx>"   # si tocaste lib/importar/, transiciones o reportes
 npx tsx src/lib/servidor/verificar-sesion.ts   # si tocaste la sesión o lib/auth/
 npx tsx src/lib/verificar-cursos.ts   # si tocaste lib/cursos-conocidos.ts
+npx tsx src/lib/verificar-dedicacion.ts   # si tocaste validarDocente o lo que exige cada dedicación (SPEC-030)
 npx tsx src/lib/verificar-criterios.ts   # si tocaste lib/criterios*.ts
 npx tsx src/lib/verificar-directorio.ts "<LISTADO DOCENTES CODIFICADO.xlsx>"   # si tocaste lib/directorio.ts
 DATABASE_URL=postgresql://…/asignacion_academica_prueba npx tsx src/lib/servidor/verificar-sql.ts   # si tocaste lib/servidor/ o los tipos
