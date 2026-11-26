@@ -25,6 +25,7 @@ export {
   FiLayers,
   FiTrendingUp,
   FiX,
+  FiPlayCircle,
   FiGrid,
   FiFileText,
   FiBarChart2,

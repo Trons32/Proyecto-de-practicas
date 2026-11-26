@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import BarraLateral from "./BarraLateral";
+import TutorialCoordinador from "./TutorialCoordinador";
 
 /**
  * Envoltorio de la aplicación: el login ocupa la pantalla completa, el
@@ -19,6 +20,7 @@ export default function Chrome({ children }: { children: React.ReactNode }) {
         <BarraLateral />
       </div>
       <div className="min-h-screen lg:ml-64 print:ml-0">{children}</div>
+      <TutorialCoordinador />
     </>
   );
 }

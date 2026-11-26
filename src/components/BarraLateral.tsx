@@ -10,6 +10,7 @@ import {
   FiUsers,
   FiBarChart2,
   FiLogOut,
+  FiPlayCircle,
   FiMenu,
   FiSliders,
   FiBell,
@@ -17,6 +18,7 @@ import {
   FiDatabase,
   FiBookOpen,
 } from "./iconos";
+import { abrirTutorial } from "./TutorialCoordinador";
 import type { IconType } from "react-icons";
 import { useSesionStore } from "@/lib/stores/sesion-store";
 import { ETIQUETA_ROL, type Rol } from "@/lib/auth/sesion";
@@ -197,6 +199,21 @@ export default function BarraLateral() {
                 </span>
               </span>
             </div>
+          )}
+
+          {sesion?.usuario.rol === "COORDINADOR" && (
+            <button
+              type="button"
+              onClick={() => {
+                setAbierta(false);
+                abrirTutorial();
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-cecar-600/30 py-2.5
+                         text-sm font-semibold text-cecar-700 transition hover:bg-cecar-600/10"
+            >
+              <FiPlayCircle className="h-[18px] w-[18px]" aria-hidden />
+              Ver tutorial
+            </button>
           )}
 
           <button
